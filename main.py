@@ -64,7 +64,8 @@ class TypeHinter:
 
     def commit_changes(self, file_path: Path, function_name: str) -> None:
         """Commit the changes to git."""
-        self.repo.index.add([str(file_path)])
+        relative_path = file_path.relative_to(self.project_path)
+        self.repo.index.add([str(relative_path)])
         self.repo.index.commit(f"Add type hints to {function_name} in {file_path.name}")
 
     def process_project(self) -> None:
