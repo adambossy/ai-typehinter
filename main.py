@@ -1,6 +1,5 @@
 import ast
-import os
-from typing import List, Dict, Optional, Any
+from typing import List
 from pathlib import Path
 import anthropic
 import git
