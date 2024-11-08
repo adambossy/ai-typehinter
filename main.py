@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import List
 
 import click
-import git
 from aider import models
 from aider.coders import Coder
 from dotenv import load_dotenv
