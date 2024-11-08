@@ -88,12 +88,8 @@ def cli(project_path: str, api_key: str):
     if not api_key:
         raise click.UsageError("ANTHROPIC_API_KEY must be provided either via --api-key or environment variable")
     
-    try:
-        type_hinter = TypeHinter(project_path, api_key)
-        type_hinter.process_project()
-    except Exception as e:
-        click.echo(f"Error: {str(e)}", err=True)
-        raise click.Abort()
+    type_hinter = TypeHinter(project_path, api_key)
+    type_hinter.process_project()
 
 if __name__ == "__main__":
     load_dotenv()  # Load environment variables from .env file
