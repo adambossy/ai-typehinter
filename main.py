@@ -2,6 +2,7 @@ import ast
 from typing import List
 from pathlib import Path
 from aider.coders import Coder
+from aider.models import Model
 import git
 from git.repo import Repo
 import click
@@ -10,7 +11,10 @@ from dotenv import load_dotenv
 class TypeHinter:
     def __init__(self, project_path: str, api_key: str):
         self.project_path = Path(project_path)
-        self.coder = Coder.create(main_model="claude-3-opus-20240229", api_key=api_key)
+        self.coder = Coder.create(
+            main_model=Model("claude-3-opus-20240229"),
+            api_key=api_key
+        )
         self.repo = Repo(project_path)
 
     def get_python_files(self) -> List[Path]:
