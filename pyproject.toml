@@ -1,13 +1,20 @@
 [tool.poetry]
 name = "ai-typehinter"
 version = "0.1.0"
-description = ""
+description = "Automatic type hinting tool for Python projects using Claude API"
 authors = ["Adam Bossy <adambossy@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
 aider-chat = "^0.62.1"
+anthropic = "^0.8.1"
+gitpython = "^3.1.42"
+click = "^8.1.7"
+python-dotenv = "^1.0.1"
+
+[tool.poetry.scripts]
+typehint = "main:cli"
 
 
 [build-system]

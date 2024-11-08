@@ -5,6 +5,8 @@ from pathlib import Path
 import anthropic
 import git
 from git.repo import Repo
+import click
+from dotenv import load_dotenv
 
 class TypeHinter:
     def __init__(self, project_path: str, api_key: str):
@@ -81,13 +83,21 @@ class TypeHinter:
                 except Exception as e:
                     print(f"Error processing function {func.name} in {file_path}: {str(e)}")
 
-def main():
-    # Get these from environment variables in practice
-    project_path = "path/to/your/project"
-    api_key = "your-anthropic-api-key"
+@click.command()
+@click.option('--project-path', '-p', required=True, help='Path to the Python project to type hint')
+@click.option('--api-key', '-k', envvar='ANTHROPIC_API_KEY', help='Anthropic API key (can also be set via ANTHROPIC_API_KEY env var)')
+def cli(project_path: str, api_key: str):
+    """Add type hints to Python projects using Claude API."""
+    if not api_key:
+        raise click.UsageError("ANTHROPIC_API_KEY must be provided either via --api-key or environment variable")
     
-    type_hinter = TypeHinter(project_path, api_key)
-    type_hinter.process_project()
+    try:
+        type_hinter = TypeHinter(project_path, api_key)
+        type_hinter.process_project()
+    except Exception as e:
+        click.echo(f"Error: {str(e)}", err=True)
+        raise click.Abort()
 
 if __name__ == "__main__":
-    main()
+    load_dotenv()  # Load environment variables from .env file
+    cli()
