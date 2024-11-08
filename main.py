@@ -1,7 +1,7 @@
 import ast
 from typing import List
 from pathlib import Path
-import anthropic
+from aider.coders import Coder
 import git
 from git.repo import Repo
 import click
@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 class TypeHinter:
     def __init__(self, project_path: str, api_key: str):
         self.project_path = Path(project_path)
-        self.client = anthropic.Client(api_key=api_key)
+        self.coder = Coder.create(main_model="claude-3-opus-20240229", api_key=api_key)
         self.repo = Repo(project_path)
 
     def get_python_files(self) -> List[Path]:
@@ -35,7 +35,7 @@ class TypeHinter:
         return ''.join(source_lines[function_node.lineno-1:function_node.end_lineno])
 
     def get_type_hints(self, function_source: str) -> str:
-        """Get type hints for a function using Claude API."""
+        """Get type hints for a function using Aider's Coder interface."""
         prompt = f"""Add appropriate type hints to this Python function. Return ONLY the type-hinted version of the function, nothing else.
         Keep all existing docstrings and comments. Only add type hints.
         
@@ -43,13 +43,8 @@ class TypeHinter:
         
         {function_source}"""
 
-        response = self.client.messages.create(
-            model="claude-3-opus-20240229",
-            max_tokens=1000,
-            temperature=0,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.content[0].text
+        response = self.coder.run_one(prompt)
+        return response
 
     def update_file_with_type_hints(self, file_path: Path, original_func: str, hinted_func: str) -> None:
         """Update the file by replacing the original function with its type-hinted version."""
