@@ -68,6 +68,26 @@ class TypeHinter:
         self.repo.index.add([str(relative_path)])
         self.repo.index.commit(f"Add type hints to {function_name} in {file_path.name}")
 
+    def show_diff_and_confirm(self, file_path: Path, original_content: str, new_content: str) -> bool:
+        """Show diff and get user confirmation for changes."""
+        print(f"\nProposed changes for {file_path}:")
+        print("=" * 80)
+        
+        # Create a simple diff output
+        for i, (old_line, new_line) in enumerate(zip(original_content.splitlines(), new_content.splitlines())):
+            if old_line != new_line:
+                print(f"- {old_line}")
+                print(f"+ {new_line}")
+        print("=" * 80)
+        
+        while True:
+            response = input("\nApply these changes? (yes/no): ").lower()
+            if response in ['yes', 'y']:
+                return True
+            elif response in ['no', 'n']:
+                return False
+            print("Please answer 'yes' or 'no'")
+
     def process_project(self) -> None:
         """Process the entire project and add type hints to all functions."""
         python_files = self.get_python_files()
@@ -78,8 +98,13 @@ class TypeHinter:
             for func in functions:
                 original_source = self.get_function_source(file_path, func)
                 type_hinted_source = self.get_type_hints(original_source)
-                self.update_file_with_type_hints(file_path, original_source, type_hinted_source)
-                self.commit_changes(file_path, func.name)
+                
+                # Show diff and get confirmation
+                if self.show_diff_and_confirm(file_path, original_source, type_hinted_source):
+                    self.update_file_with_type_hints(file_path, original_source, type_hinted_source)
+                    self.commit_changes(file_path, func.name)
+                else:
+                    print(f"Skipping changes to {func.name} in {file_path}")
 
 @click.command()
 @click.option('--project-path', '-p', required=True, help='Path to the Python project to type hint')
