@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "ai-typehinter"
+version = "0.1.0"
+description = ""
+authors = ["Adam Bossy <adambossy@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+aider-chat = "^0.62.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
