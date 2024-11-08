@@ -76,12 +76,9 @@ class TypeHinter:
             
             for func in functions:
                 original_source = self.get_function_source(file_path, func)
-                try:
-                    type_hinted_source = self.get_type_hints(original_source)
-                    self.update_file_with_type_hints(file_path, original_source, type_hinted_source)
-                    self.commit_changes(file_path, func.name)
-                except Exception as e:
-                    print(f"Error processing function {func.name} in {file_path}: {str(e)}")
+                type_hinted_source = self.get_type_hints(original_source)
+                self.update_file_with_type_hints(file_path, original_source, type_hinted_source)
+                self.commit_changes(file_path, func.name)
 
 @click.command()
 @click.option('--project-path', '-p', required=True, help='Path to the Python project to type hint')
