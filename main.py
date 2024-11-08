@@ -11,9 +11,9 @@ from git.repo import Repo
 
 
 class TypeHinter:
-    def __init__(self, project_path: str, api_key: str, main_model: models.Model):
+    def __init__(self, project_path: str, main_model: models.Model):
         self.project_path = Path(project_path)
-        self.coder = Coder.create(main_model=main_model, api_key=api_key)
+        self.coder = Coder.create(main_model=main_model)
         self.repo = Repo(project_path)
 
     def get_python_files(self) -> List[Path]:
@@ -125,26 +125,15 @@ class TypeHinter:
     required=True,
     help="Path to the Python project to type hint",
 )
-@click.option(
-    "--api-key",
-    "-k",
-    envvar="ANTHROPIC_API_KEY",
-    help="Anthropic API key (can also be set via ANTHROPIC_API_KEY env var)",
-)
-def cli(project_path: str, api_key: str):
+def cli(project_path: str):
     """Add type hints to Python projects using Claude API."""
-    if not api_key:
-        raise click.UsageError(
-            "ANTHROPIC_API_KEY must be provided either via --api-key or environment variable"
-        )
-
     main_model = models.Model(
         "claude-3-5-sonnet-20241022",
         editor_model="claude-3-5-sonnet-20241022",
         editor_edit_format="editor-diff",
     )
 
-    type_hinter = TypeHinter(project_path, api_key, main_model)
+    type_hinter = TypeHinter(project_path, main_model)
     type_hinter.process_project()
 
 
