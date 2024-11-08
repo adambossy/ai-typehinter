@@ -1,3 +1,4 @@
 .env
 .aider*
 __pycache__/
+repos/
