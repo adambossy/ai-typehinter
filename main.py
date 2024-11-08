@@ -5,14 +5,15 @@ from typing import List
 import click
 from aider import models
 from aider.coders import Coder
+from aider.io import InputOutput
 from dotenv import load_dotenv
 from git.repo import Repo
 
 
 class TypeHinter:
-    def __init__(self, project_path: str, main_model: models.Model):
+    def __init__(self, project_path: str, coder: Coder):
         self.project_path = Path(project_path)
-        self.coder = Coder.create(main_model=main_model)
+        self.coder = coder
         self.repo = Repo(project_path)
 
     def get_python_files(self) -> List[Path]:
@@ -133,7 +134,10 @@ def cli(project_path: str):
         editor_edit_format="editor-diff",
     )
 
-    type_hinter = TypeHinter(project_path, main_model)
+    io = InputOutput(llm_history_file="typehinter_chat_history.txt")
+    coder = Coder.create(main_model=main_model, io=io)
+
+    type_hinter = TypeHinter(project_path, coder)
     type_hinter.process_project()
 
 
