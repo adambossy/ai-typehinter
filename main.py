@@ -49,7 +49,8 @@ class TypeHinter:
         
         {function_source}"""
 
-        response = self.coder.run_one(prompt)
+        response = self.coder.run_one(prompt, preproc=True)
+        print(f"Response: {response}")
         return response
 
     def update_file_with_type_hints(
