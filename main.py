@@ -41,9 +41,13 @@ class TypeHinter:
             source_lines[function_node.lineno - 1 : function_node.end_lineno]
         )
 
-    def get_type_hints(self, function_source: str) -> str:
+    def get_type_hints(self, function_source: str, file_path: Path) -> str:
         """Get type hints for a function using Aider's Coder interface."""
-        prompt = f"""Add appropriate type hints to this Python function. Return ONLY the type-hinted version of the function, nothing else.
+        # First add the file to aider's chat context
+        self.coder.add_rel_fname(str(file_path))
+
+        prompt = f"""Add appropriate type hints to this Python function from file {file_path.name}. 
+        Return ONLY the type-hinted version of the function, nothing else.
         Keep all existing docstrings and comments. Only add type hints.
         
         Here's the function:
@@ -105,7 +109,7 @@ class TypeHinter:
 
             for func in functions:
                 original_source = self.get_function_source(file_path, func)
-                type_hinted_source = self.get_type_hints(original_source)
+                type_hinted_source = self.get_type_hints(original_source, file_path)
 
                 # Show diff and get confirmation
                 if self.show_diff_and_confirm(
