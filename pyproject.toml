@@ -7,11 +7,15 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
-aider-chat = "^0.62.1"
 anthropic = "*"
 gitpython = "^3.1.42"
 click = "^8.1.7"
 python-dotenv = "^1.0.1"
+diskcache = "^5.6.3"
+tree-sitter-languages = "^1.10.2"
+pygments = "^2.18.0"
+tqdm = "^4.67.0"
+networkx = "^3.4.2"
 
 [tool.poetry.scripts]
 typehint = "main:cli"
