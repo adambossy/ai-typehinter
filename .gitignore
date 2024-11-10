@@ -2,3 +2,5 @@
 .aider*
 __pycache__/
 repos/
+aider_chat_history.txt
+typehinter_chat_history.txt
