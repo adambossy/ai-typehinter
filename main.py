@@ -104,7 +104,7 @@ class TypeHinter:
         for file_path in python_files:
             # Add file to context before processing
             self.coder.add_rel_fname(str(file_path))
-            
+
             functions = self.extract_functions(file_path)
             for func in functions:
                 original_source = self.get_function_source(file_path, func)
@@ -120,7 +120,7 @@ class TypeHinter:
                     self.commit_changes(file_path, func.name)
                 else:
                     print(f"Skipping changes to {func.name} in {file_path}")
-            
+
             # Remove file from context after processing
             self.coder.remove_file(str(file_path))
 
@@ -141,7 +141,7 @@ def cli(project_path: str):
     )
 
     io = InputOutput(llm_history_file="typehinter_chat_history.txt")
-    coder = Coder.create(main_model=main_model, io=io)
+    coder = Coder.create(main_model=main_model, io=io, auto_commits=False)
 
     type_hinter = TypeHinter(project_path, coder)
     type_hinter.process_project()
