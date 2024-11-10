@@ -43,9 +43,6 @@ class TypeHinter:
 
     def get_type_hints(self, function_source: str, file_path: Path) -> str:
         """Get type hints for a function using Aider's Coder interface."""
-        # First add the file to aider's chat context
-        self.coder.add_rel_fname(str(file_path))
-
         prompt = f"""Add appropriate type hints to this Python function from file {file_path.name}. 
         Return ONLY the type-hinted version of the function, nothing else.
         Keep all existing docstrings and comments. Only add type hints.
@@ -105,8 +102,10 @@ class TypeHinter:
         python_files = self.get_python_files()
 
         for file_path in python_files:
+            # Add file to context before processing
+            self.coder.add_rel_fname(str(file_path))
+            
             functions = self.extract_functions(file_path)
-
             for func in functions:
                 original_source = self.get_function_source(file_path, func)
                 type_hinted_source = self.get_type_hints(original_source, file_path)
@@ -121,6 +120,9 @@ class TypeHinter:
                     self.commit_changes(file_path, func.name)
                 else:
                     print(f"Skipping changes to {func.name} in {file_path}")
+            
+            # Remove file from context after processing
+            self.coder.remove_file(str(file_path))
 
 
 @click.command()
