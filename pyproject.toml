@@ -97,7 +97,7 @@ urllib3 = "2.2.3"
 wcwidth = "0.2.13"
 yarl = "1.17.1"
 zipp = "3.20.2"
-aider-chat = {path = "aider"}
+pytest = "^8.3.3"
 
 [tool.poetry.scripts]
 typehint = "main:cli"
@@ -106,3 +106,6 @@ typehint = "main:cli"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+aider-chat = {path = "aider", develop = true}
