@@ -107,7 +107,7 @@ Here's the function to type hint:
 {function_source}
 
 Return ONLY the type-hinted version of the function, nothing else.
-Keep all existing docstrings and comments. Only add type hints."""
+Keep all existing docstrings, comments, and whitespace exactly as they appear. Only add type hints."""
 
         return self.conversation.completion(prompt)
 
