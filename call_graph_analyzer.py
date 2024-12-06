@@ -13,6 +13,10 @@ class FunctionNode:
         self.callees: Set[FunctionNode] = set()  # Functions this function calls
         self.callers: Set[FunctionNode] = set()  # Functions that call this function
 
+    def __repr__(self) -> str:
+        class_prefix = f"{self.class_name}." if self.class_name else ""
+        return f"FunctionNode({class_prefix}{self.name})"
+
     def add_callee(self, callee: "FunctionNode"):
         """Add a function that this function calls."""
         self.callees.add(callee)
