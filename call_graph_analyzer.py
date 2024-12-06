@@ -11,6 +11,10 @@ class CallGraphAnalyzer(ast.NodeVisitor):
         # Key: function name, Value: set of functions it calls
         self.call_graph: Dict[str, Set[str]] = {}
 
+        # Dictionary to store reverse call graph
+        # Key: function name, Value: set of functions that call it
+        self.reverse_call_graph: Dict[str, Set[str]] = {}
+
         # Dictionary to track function definitions
         # Key: function name, Value: filename where it's defined
         self.function_definitions: Dict[str, str] = {}
@@ -25,9 +29,11 @@ class CallGraphAnalyzer(ast.NodeVisitor):
 
         self.function_definitions[current_function] = self.current_file
 
-        # Initialize the call graph entry for this function
+        # Initialize the call graph entries for this function
         if current_function not in self.call_graph:
             self.call_graph[current_function] = set()
+        if current_function not in self.reverse_call_graph:
+            self.reverse_call_graph[current_function] = set()
 
         # Analyze function body for function calls
         for child in ast.walk(node):
@@ -35,7 +41,12 @@ class CallGraphAnalyzer(ast.NodeVisitor):
                 # Try to get the function name being called
                 if isinstance(child.func, ast.Name):
                     called_function = child.func.id
+                    # Add to forward call graph
                     self.call_graph[current_function].add(called_function)
+                    # Add to reverse call graph
+                    if called_function not in self.reverse_call_graph:
+                        self.reverse_call_graph[called_function] = set()
+                    self.reverse_call_graph[called_function].add(current_function)
 
         # Continue traversing the AST
         self.generic_visit(node)
@@ -124,7 +135,12 @@ def cli(project_path: str):
     analyzer.analyze_repository(project_path)
 
     print("Call Graph:")
-    analyzer.print_call_graph()
+    for func, calls in analyzer.call_graph.items():
+        callers = analyzer.reverse_call_graph.get(func, set())
+        print(f"{func}:")
+        print(f"  Calls: {', '.join(calls) or 'No direct calls'}")
+        print(f"  Called by: {', '.join(callers) or 'Never called'}")
+        print()
 
     print("\nUnreachable Functions:")
     unreachable = analyzer.find_unreachable_functions()
