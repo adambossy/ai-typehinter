@@ -115,12 +115,15 @@ Keep all existing docstrings and comments. Only add type hints."""
         print("=" * 80)
 
         while True:
-            response = input("\nApply these changes? (yes/no): ").lower()
+            response = input("\nApply these changes? (y/n/q): ").lower()
             if response in ["yes", "y"]:
                 return True
             elif response in ["no", "n"]:
                 return False
-            print("Please answer 'yes' or 'no'")
+            elif response in ["quit", "q"]:
+                print("Exiting program...")
+                exit(0)
+            print("Please answer 'yes', 'no', or 'quit'")
 
     def process_project(self) -> None:
         """Process the entire project and add type hints to all functions."""
