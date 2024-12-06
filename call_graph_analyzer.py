@@ -77,34 +77,52 @@ class CallGraphAnalyzer(ast.NodeVisitor):
                     if isinstance(child.func.value, ast.Name):
                         if child.func.value.id == "self" and self.current_class:
                             # Handle method calls within the same class
-                            called_name = child.func.attr
+                            called_name = f"{self.current_class}.{child.func.attr}"
                         else:
-                            # Handle other attribute calls
-                            called_name = child.func.attr
+                            # Handle method calls on instances
+                            # Look up the type of the instance if possible
+                            instance_name = child.func.value.id
+                            method_name = child.func.attr
+
+                            # If we're calling a method on an instance of a class we just created
+                            if instance_name in [
+                                n.name
+                                for n in self.nodes.values()
+                                if isinstance(n.name, str)
+                            ]:
+                                # This is a method call on a class instance
+                                called_name = f"{instance_name}.{method_name}"
+                            else:
+                                # Try to find the class name from the instance
+                                for node_name in self.nodes:
+                                    if node_name.endswith(f".{instance_name}"):
+                                        class_name = node_name.split(".")[0]
+                                        called_name = f"{class_name}.{method_name}"
+                                        break
+                                if not called_name:
+                                    called_name = method_name
 
                 if called_name:
-                    # For class methods, include the class name in the lookup
-                    full_name = (
-                        f"{self.current_class}.{called_name}"
-                        if self.current_class
-                        and called_name
-                        != "ShoppingCart"  # Special case for constructor
-                        else called_name
-                    )
-
-                    # Create or get the node for the called function
-                    called_node = self.nodes.get(full_name)
+                    # Use called_name directly
+                    called_node = self.nodes.get(called_name)
                     if not called_node:
-                        called_node = FunctionNode(
-                            name=called_name,
-                            filename=self.current_file,  # Use current file instead of "unknown"
-                            class_name=(
-                                self.current_class
-                                if called_name != "ShoppingCart"
-                                else None
-                            ),
-                        )
-                        self.nodes[full_name] = called_node
+                        # Try to find the method with class prefix
+                        for existing_name in self.nodes:
+                            if existing_name.endswith(f".{called_name}"):
+                                called_node = self.nodes[existing_name]
+                                break
+
+                        if not called_node:
+                            called_node = FunctionNode(
+                                name=called_name.split(".")[-1],
+                                filename=self.current_file,
+                                class_name=(
+                                    called_name.split(".")[0]
+                                    if "." in called_name
+                                    else None
+                                ),
+                            )
+                            self.nodes[called_name] = called_node
 
                     current_node.add_callee(called_node)
 
