@@ -49,18 +49,17 @@ class CallGraphAnalyzer(ast.NodeVisitor):
             return
 
         # Create or get the node for this function
-        current_node = self.nodes.get(
+        node_name = (
             f"{self.current_class}.{node.name}" if self.current_class else node.name
         )
+        current_node = self.nodes.get(node_name)
         if not current_node:
             current_node = FunctionNode(
                 name=node.name,
                 filename=self.current_file,
                 class_name=self.current_class,
             )
-            self.nodes[
-                f"{self.current_class}.{node.name}" if self.current_class else node.name
-            ] = current_node
+            self.nodes[node_name] = current_node
 
             # Track function order in file
             if self.current_file not in self.files_to_functions:
@@ -72,7 +71,13 @@ class CallGraphAnalyzer(ast.NodeVisitor):
             if isinstance(child, ast.Call):
                 called_name = None
                 if isinstance(child.func, ast.Name):
-                    called_name = child.func.id
+                    # If we're calling a class directly, treat it as calling its __init__
+                    if child.func.id in [
+                        n.class_name for n in self.nodes.values() if n.class_name
+                    ]:
+                        called_name = f"{child.func.id}.__init__"
+                    else:
+                        called_name = child.func.id
                 elif isinstance(child.func, ast.Attribute):
                     if isinstance(child.func.value, ast.Name):
                         if child.func.value.id == "self" and self.current_class:

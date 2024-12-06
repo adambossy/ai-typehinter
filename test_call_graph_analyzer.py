@@ -123,7 +123,8 @@ def process_shopping_cart():
 
     def test_function_discovery(self):
         """Test that all functions (both module-level and class methods) are discovered."""
-        self.assertEqual(len(self.analyzer.nodes), 5)
+        self.assertEqual(len(self.analyzer.nodes), 6)
+        self.assertIn("sum", self.analyzer.nodes)
         self.assertIn("format_price", self.analyzer.nodes)
         self.assertIn("process_shopping_cart", self.analyzer.nodes)
         self.assertIn("ShoppingCart.__init__", self.analyzer.nodes)
@@ -149,9 +150,6 @@ def process_shopping_cart():
         process_cart = self.analyzer.nodes["process_shopping_cart"]
         add_item = self.analyzer.nodes["ShoppingCart.add_item"]
 
-        print(f"Process cart callees: {process_cart.callees}")
-        print(f"Add item callers: {add_item.callers}")
-
         self.assertIn(add_item, process_cart.callees)
         self.assertIn(process_cart, add_item.callers)
 
@@ -173,7 +171,6 @@ def process_shopping_cart():
 
     def test_file_attribution(self):
         """Test that all functions are correctly attributed to the source file."""
-        print(f"Nodes: {self.analyzer.nodes}")
         for node in self.analyzer.nodes.values():
             self.assertEqual(node.filename, self.temp_file.name)
 
