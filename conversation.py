@@ -8,6 +8,7 @@ from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_community.chat_models import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import ChatOpenAI
+from langsmith import traceable, wrappers
 
 load_dotenv()
 
@@ -20,7 +21,13 @@ class Conversation:
         Args:
             llm: A LangChain chat model (ChatOpenAI, ChatAnthropic, etc.)
         """
-        self.llm = llm
+        # Wrap the LLM for tracing based on its type
+        if isinstance(llm, ChatOpenAI):
+            self.llm = wrappers.wrap_openai(llm)
+        elif isinstance(llm, ChatAnthropic):
+            self.llm = wrappers.wrap_anthropic(llm)
+        else:
+            self.llm = llm  # Fallback for other LLM types
 
         # Define the system prompt
         self.system_prompt = """You are a helpful AI assistant focused on adding type hints to Python code.
@@ -66,6 +73,7 @@ def get_user_data(username):
         # Create chain without itemgetter
         self.chain = self.prompt | llm
 
+    @traceable
     def completion(self, prompt: str) -> str:
         """
         Get a completion from the LLM.
