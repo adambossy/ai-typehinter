@@ -26,14 +26,17 @@ class TypeHinter:
         # Analyze the codebase upfront
         self.analyzer.analyze_repository(str(project_path))
 
-    def normalize_indentation(self, source_lines: list[str]) -> str:
+    def normalize_indentation(self, source_lines: list[str]) -> tuple[str, int]:
         """Normalize the indentation of source code lines.
 
         Removes the base indentation while preserving relative indentation of the code block.
         The first non-empty line is used as the reference for the base indentation level.
+
+        Returns:
+            tuple[str, int]: The normalized source code and the original base indentation level
         """
         if not source_lines:
-            return ""
+            return "", 0
 
         # Find the indentation of the function signature (first line)
         first_line = source_lines[0]
@@ -53,10 +56,16 @@ class TypeHinter:
                 # Preserve empty lines
                 normalized_lines.append(line[base_indent:])
 
-        return "".join(normalized_lines)
+        return "".join(normalized_lines), base_indent
 
-    def get_function_source(self, file_path: Path, function_node: FunctionNode) -> str:
-        """Get the source code of a function, normalized to remove leading indentation."""
+    def get_function_source(
+        self, file_path: Path, function_node: FunctionNode
+    ) -> tuple[str, int]:
+        """Get the source code of a function, normalized to remove leading indentation.
+
+        Returns:
+            tuple[str, int]: The normalized source code and the original base indentation level
+        """
         with open(file_path, "r") as f:
             source_lines = f.readlines()
 
@@ -112,13 +121,20 @@ Keep all existing docstrings, comments, and whitespace exactly as they appear. O
         return self.conversation.completion(prompt)
 
     def update_file_with_type_hints(
-        self, file_path: Path, original_func: str, hinted_func: str
+        self, file_path: Path, original_func: str, hinted_func: str, base_indent: int
     ) -> None:
         """Update the file by replacing the original function with its type-hinted version."""
+        # Re-indent the type-hinted function
+        indented_lines = []
+        for line in hinted_func.splitlines():
+            # Add the original base indentation to each line
+            indented_lines.append(" " * base_indent + line if line.strip() else line)
+        indented_hinted_func = "\n".join(indented_lines)
+
         with open(file_path, "r") as f:
             content = f.read()
 
-        new_content = content.replace(original_func, hinted_func)
+        new_content = content.replace(original_func, indented_hinted_func)
 
         with open(file_path, "w") as f:
             f.write(new_content)
@@ -164,13 +180,14 @@ Keep all existing docstrings, comments, and whitespace exactly as they appear. O
 
     def process_project(self) -> None:
         """Process the entire project and add type hints to all functions."""
-        # Get unique file paths from the analyzer's nodes
         walker = self.analyzer.get_walker()
 
         for function_node in walker:
             file_path = Path(function_node.filename)
 
-            original_source = self.get_function_source(file_path, function_node)
+            original_source, base_indent = self.get_function_source(
+                file_path, function_node
+            )
             type_hinted_source = self.get_type_hints(
                 original_source, file_path, function_node.name
             )
@@ -183,7 +200,7 @@ Keep all existing docstrings, comments, and whitespace exactly as they appear. O
                 file_path, original_source, type_hinted_source
             ):
                 self.update_file_with_type_hints(
-                    file_path, original_source, type_hinted_source
+                    file_path, original_source, type_hinted_source, base_indent
                 )
                 self.commit_changes(file_path, function_node.name)
             else:
