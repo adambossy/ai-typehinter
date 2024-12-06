@@ -1,6 +1,5 @@
-import ast
+from difflib import unified_diff
 from pathlib import Path
-from typing import List
 
 import click
 from dotenv import load_dotenv
@@ -105,13 +104,19 @@ Keep all existing docstrings and comments. Only add type hints."""
         print(f"\nProposed changes for {file_path}:")
         print("=" * 80)
 
-        # Create a simple diff output
-        for i, (old_line, new_line) in enumerate(
-            zip(original_content.splitlines(), new_content.splitlines())
-        ):
-            if old_line != new_line:
-                print(f"- {old_line}")
-                print(f"+ {new_line}")
+        # Normalize line endings and remove extra blank lines
+        original_lines = [line.rstrip() for line in original_content.splitlines()]
+        new_lines = [line.rstrip() for line in new_content.splitlines()]
+
+        # Use unified diff format (like git)
+        diff = unified_diff(
+            original_lines,
+            new_lines,
+            fromfile=str(file_path),
+            tofile=str(file_path),
+            lineterm="",
+        )
+        print("\n".join(diff) + "\n")
         print("=" * 80)
 
         while True:
