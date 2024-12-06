@@ -1,4 +1,3 @@
-import ast
 import os
 import tempfile
 from unittest import TestCase
@@ -38,20 +37,25 @@ def add_one(num):
         self.assertIn("calculate_square", self.analyzer.nodes)
         self.assertIn("add_one", self.analyzer.nodes)
 
-    def test_function_relationships(self):
-        """Test that function call relationships are correctly identified."""
-        calc_square = self.analyzer.nodes["calculate_square"]
+    def test_add_one_calls_calculate_square(self):
+        """Test that add_one correctly records calculate_square as its callee."""
         add_one = self.analyzer.nodes["add_one"]
+        calc_square = self.analyzer.nodes["calculate_square"]
 
-        # Check number of callers and callees
-        self.assertEqual(len(calc_square.callers), 1)
-        self.assertEqual(len(calc_square.callees), 0)
-        self.assertEqual(len(add_one.callers), 0)
+        # Check that add_one calls exactly one function
         self.assertEqual(len(add_one.callees), 1)
-
-        # Verify the specific call relationships
-        self.assertIn(add_one, calc_square.callers)
+        # Verify that function is calculate_square
         self.assertIn(calc_square, add_one.callees)
+
+    def test_calculate_square_is_called_by_add_one(self):
+        """Test that calculate_square correctly records add_one as its caller."""
+        add_one = self.analyzer.nodes["add_one"]
+        calc_square = self.analyzer.nodes["calculate_square"]
+
+        # Check that calculate_square is called by exactly one function
+        self.assertEqual(len(calc_square.callers), 1)
+        # Verify that function is add_one
+        self.assertIn(add_one, calc_square.callers)
 
     def test_file_attribution(self):
         """Test that functions are correctly attributed to their source files."""
