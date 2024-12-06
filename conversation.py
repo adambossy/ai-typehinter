@@ -77,7 +77,6 @@ def get_user_data(username):
             The type-hinted version of the function
         """
         response = self.chain.invoke({"input": [HumanMessage(content=prompt)]})
-        print(response.to_messages())
         return response.content
 
 

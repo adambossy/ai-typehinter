@@ -1,5 +1,6 @@
 import ast
 import os
+import pathlib
 from pprint import pprint
 from typing import Dict, List, Set
 
@@ -60,7 +61,6 @@ class CallGraphWalker:
             for node in analyzer.nodes.values()
             if not node.callees and not node.is_called_only
         ]
-        pprint(self.leaf_nodes)
 
     def __iter__(self):
         """Return self as iterator."""
@@ -271,10 +271,34 @@ class CallGraphAnalyzer(ast.NodeVisitor):
         :param func_name: Name of the function to check
         :return: True if the function is a test function, False otherwise
         """
-        print(f"Checking if {func_name} is a test function")
         return func_name.startswith("test_") or (  # Test functions
             func_name.startswith("Test") and func_name[0].isupper()
         )  # Test classes
+
+    def is_test_file(self, file_path: str) -> bool:
+        """
+        Determine if a file is a test file based on pytest conventions.
+
+        Pytest looks for:
+        - Files that start with test_
+        - Files that end with _test.py
+        - Files in directories named test or tests
+
+        Args:
+            file_path: Path to the file to check
+        Returns:
+            bool: True if the file is a test file
+        """
+        path = pathlib.Path(file_path)
+        file_name = path.name
+
+        # Check file naming patterns
+        if file_name.startswith("test_") or file_name.endswith("_test.py"):
+            return True
+
+        # Check if file is in a test directory
+        parts = path.parts
+        return any(part.lower() in ("test", "tests") for part in parts)
 
     def analyze_file(self, file_path: str):
         """
@@ -303,6 +327,9 @@ class CallGraphAnalyzer(ast.NodeVisitor):
             for file in files:
                 if file.endswith(".py"):
                     file_path = os.path.join(root, file)
+                    # Skip test files at the same level as .py extension check
+                    if self.is_test_file(file_path):
+                        continue
                     self.analyze_file(file_path)
 
     def print_call_graph(self):

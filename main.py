@@ -27,10 +27,6 @@ class TypeHinter:
         # Analyze the codebase upfront
         self.analyzer.analyze_repository(str(project_path))
 
-    def get_python_files(self) -> List[Path]:
-        """Get all Python files in the project directory."""
-        return list(self.project_path.rglob("*.py"))
-
     def get_function_source(self, file_path: Path, function_node: FunctionNode) -> str:
         """Get the source code of a function."""
         with open(file_path, "r") as f:
@@ -43,20 +39,11 @@ class TypeHinter:
         self, function_source: str, file_path: Path, function_name: str
     ) -> str:
         """Get type hints for a function using context from the call graph."""
-
-        print(f"Entering get_type_hints with parameters:")
-        print(f"  function_source: {function_source}")
-        print(f"  file_path: {file_path}")
-        print(f"  function_name: {function_name}")
-
-        # Get calling and callee functions
         function_node = None
         for node in self.analyzer.nodes.values():
             if node.name == function_name and node.filename == str(file_path):
                 function_node = node
                 break
-
-        print(f"Found function node: {function_node}")
 
         if not function_node:
             return function_source
@@ -137,30 +124,30 @@ Keep all existing docstrings and comments. Only add type hints."""
 
     def process_project(self) -> None:
         """Process the entire project and add type hints to all functions."""
-        python_files = self.get_python_files()
+        # Get unique file paths from the analyzer's nodes
+        walker = self.analyzer.get_walker()
 
-        for file_path in python_files:
-            walker = self.analyzer.get_walker()
-            for function_node in walker:
-                original_source = self.get_function_source(file_path, function_node)
-                type_hinted_source = self.get_type_hints(
-                    original_source, file_path, function_node.name
-                )
+        for function_node in walker:
+            file_path = Path(function_node.filename)
 
-                if not type_hinted_source:
-                    print(f"Skipping {function_node.name} in {file_path}")
-                    continue
+            original_source = self.get_function_source(file_path, function_node)
+            type_hinted_source = self.get_type_hints(
+                original_source, file_path, function_node.name
+            )
 
-                # Show diff and get confirmation
-                if self.show_diff_and_confirm(
+            if not type_hinted_source:
+                continue
+
+            # Show diff and get confirmation
+            if self.show_diff_and_confirm(
+                file_path, original_source, type_hinted_source
+            ):
+                self.update_file_with_type_hints(
                     file_path, original_source, type_hinted_source
-                ):
-                    self.update_file_with_type_hints(
-                        file_path, original_source, type_hinted_source
-                    )
-                    self.commit_changes(file_path, function_node.name)
-                else:
-                    print(f"Skipping changes to {function_node.name} in {file_path}")
+                )
+                self.commit_changes(file_path, function_node.name)
+            else:
+                print(f"Skipping changes to {function_node.name} in {file_path}")
 
 
 @click.command()
