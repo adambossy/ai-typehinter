@@ -2,11 +2,11 @@ import os
 
 import click
 from dotenv import load_dotenv
-from langchain.chains import LLMChain
 from langchain.chat_models.base import BaseChatModel
 from langchain.prompts import ChatPromptTemplate
-from langchain.schema import AIMessage, HumanMessage
+from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_community.chat_models import ChatAnthropic
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import ChatOpenAI
 
 load_dotenv()
@@ -33,28 +33,22 @@ When asked to add type hints to a function:
 3. Keep all docstrings and comments intact
 4. Return only the type-hinted version of the function"""
 
-        # Define one-shot example for few-shot learning
-        self.example_conversation = [
-            HumanMessage(
-                content="""Add type hints to this function:
-def get_user_data(username):
-    '''Fetch user data from database'''
-    return {"name": username, "active": True}"""
-            ),
-            AIMessage(
-                content="""def get_user_data(username: str) -> dict[str, str | bool]:
-    '''Fetch user data from database'''
-    return {"name": username, "active": True}"""
-            ),
-        ]
-
         # Create the conversation chain
         self.prompt = ChatPromptTemplate.from_messages(
             [
-                ("system", self.system_prompt),
-                self.example_conversation[0],  # HumanMessage
-                self.example_conversation[1],  # AIMessage
-                ("human", "{input}"),
+                SystemMessage(content=self.system_prompt),
+                HumanMessage(
+                    content="""Add type hints to this function:
+def get_user_data(username):
+    '''Fetch user data from database'''
+    return {"name": username, "active": True}"""
+                ),
+                AIMessage(
+                    content="""def get_user_data(username: str) -> dict[str, str | bool]:
+    '''Fetch user data from database'''
+    return {"name": username, "active": True}"""
+                ),
+                MessagesPlaceholder(variable_name="input"),
             ]
         )
 
@@ -71,7 +65,7 @@ def get_user_data(username):
         Returns:
             The type-hinted version of the function
         """
-        response = self.chain.invoke({"input": prompt})
+        response = self.chain.invoke({"input": [HumanMessage(content=prompt)]})
         return response.content
 
 
