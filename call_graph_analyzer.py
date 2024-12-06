@@ -11,10 +11,10 @@ class FunctionNode:
         self,
         name: str,
         filename: str,
-        lineno: int,
-        end_lineno: int,
         class_name: str = None,
         is_called_only: bool = False,
+        lineno: int = None,
+        end_lineno: int = None,
     ):
         self.name: str = name
         self.filename: str = filename
@@ -24,6 +24,12 @@ class FunctionNode:
         self.lineno: int = lineno
         self.end_lineno: int = end_lineno
         self.is_called_only: bool = is_called_only
+
+        # Assert that line numbers are not set for called-only functions
+        if is_called_only:
+            assert (
+                lineno is None and end_lineno is None
+            ), "Called-only functions should not have line numbers"
 
     def __repr__(self) -> str:
         class_prefix = f"{self.class_name}." if self.class_name else ""
@@ -241,8 +247,6 @@ class CallGraphAnalyzer(ast.NodeVisitor):
                 name=called_name.split(".")[-1],
                 filename="unknown",  # Since we don't know the file yet
                 class_name=called_name.split(".")[0] if "." in called_name else None,
-                lineno=call_node.lineno,  # Use the call site line number
-                end_lineno=call_node.end_lineno,  # Use the call site end line number
                 is_called_only=True,  # Mark as called-only
             )
             self.nodes[called_name] = called_node
