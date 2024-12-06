@@ -26,13 +26,45 @@ class TypeHinter:
         # Analyze the codebase upfront
         self.analyzer.analyze_repository(str(project_path))
 
+    def normalize_indentation(self, source_lines: list[str]) -> str:
+        """Normalize the indentation of source code lines.
+
+        Removes the base indentation while preserving relative indentation of the code block.
+        The first non-empty line is used as the reference for the base indentation level.
+        """
+        if not source_lines:
+            return ""
+
+        # Find the indentation of the function signature (first line)
+        first_line = source_lines[0]
+        base_indent = len(first_line) - len(first_line.lstrip())
+
+        # Remove the base indentation from all lines, preserving relative indentation
+        normalized_lines = []
+        for line in source_lines:
+            if line.strip():  # For non-empty lines
+                # Remove only the base indentation
+                if line.startswith(" " * base_indent):
+                    normalized_lines.append(line[base_indent:])
+                else:
+                    # If line has less indentation than base (shouldn't happen for valid Python)
+                    normalized_lines.append(line.lstrip())
+            else:
+                # Preserve empty lines
+                normalized_lines.append(line[base_indent:])
+
+        return "".join(normalized_lines)
+
     def get_function_source(self, file_path: Path, function_node: FunctionNode) -> str:
-        """Get the source code of a function."""
+        """Get the source code of a function, normalized to remove leading indentation."""
         with open(file_path, "r") as f:
             source_lines = f.readlines()
-        return "".join(
-            source_lines[function_node.lineno - 1 : function_node.end_lineno]
-        )
+
+        # Get the function lines
+        function_lines = source_lines[
+            function_node.lineno - 1 : function_node.end_lineno
+        ]
+        return self.normalize_indentation(function_lines)
 
     def get_type_hints(
         self, function_source: str, file_path: Path, function_name: str
