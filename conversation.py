@@ -1,8 +1,16 @@
+import os
+from operator import itemgetter
+
+import click
+from dotenv import load_dotenv
 from langchain.chains import LLMChain
 from langchain.chat_models.base import BaseChatModel
-from langchain.memory import ConversationBufferMemory
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.prompts import ChatPromptTemplate
 from langchain.schema import AIMessage, HumanMessage
+from langchain_community.chat_models import ChatAnthropic
+from langchain_openai import ChatOpenAI
+
+load_dotenv()
 
 
 class Conversation:
@@ -14,9 +22,6 @@ class Conversation:
             llm: A LangChain chat model (ChatOpenAI, ChatAnthropic, etc.)
         """
         self.llm = llm
-        self.memory = ConversationBufferMemory(
-            memory_key="chat_history", return_messages=True
-        )
 
         # Define the system prompt
         self.system_prompt = """You are a helpful AI assistant focused on adding type hints to Python code.
@@ -45,23 +50,14 @@ def get_user_data(username):
         self.prompt = ChatPromptTemplate.from_messages(
             [
                 ("system", self.system_prompt),
-                MessagesPlaceholder(variable_name="examples"),
-                MessagesPlaceholder(variable_name="chat_history"),
+                self.example_conversation[0],  # HumanMessage
+                self.example_conversation[1],  # AIMessage
                 ("human", "{input}"),
             ]
         )
 
-        self.chain = LLMChain(
-            llm=self.llm, prompt=self.prompt, memory=self.memory, verbose=False
-        )
-
-        self.initialize_conversation()
-
-    def initialize_conversation(self) -> None:
-        """Initialize conversation with example messages"""
-        self.memory.clear()
-        for message in self.example_conversation:
-            self.memory.chat_memory.add_message(message)
+        # Create chain without itemgetter
+        self.chain = self.prompt | llm
 
     def completion(self, prompt: str) -> str:
         """
@@ -73,11 +69,46 @@ def get_user_data(username):
         Returns:
             The type-hinted version of the function
         """
-        response = self.chain.invoke(
-            {"input": prompt, "examples": self.example_conversation}
-        )
-        return response["text"]
+        response = self.chain.invoke({"input": prompt})
+        return response.content
 
-    def reset_conversation(self) -> None:
-        """Reset the conversation to initial state"""
-        self.initialize_conversation()
+
+MODELS = {
+    "gpt-4": lambda: ChatOpenAI(
+        model="gpt-4", temperature=0.1, api_key=os.getenv("OPENAI_API_KEY")
+    ),
+    "claude": lambda: ChatAnthropic(
+        model="claude-3-5-sonnet-20241022",
+        temperature=0.1,
+        api_key=os.getenv("ANTHROPIC_API_KEY"),
+    ),
+}
+
+DEFAULT_PROMPT = """Add type hints to this function:
+def process_data(data):
+    '''Process the input data'''
+    result = []
+    for item in data:
+        result.append(item * 2)
+    return result"""
+
+
+@click.command()
+@click.option(
+    "--model",
+    type=click.Choice(["gpt-4", "claude"]),
+    default="claude",
+    help="The LLM model to use",
+)
+@click.option("--prompt", default=DEFAULT_PROMPT, help="The prompt to send to the LLM")
+def cli(model: str, prompt: str) -> None:
+    """CLI tool for getting type hints from an LLM."""
+    llm = MODELS[model]()
+    conversation = Conversation(llm)
+
+    result = conversation.completion(prompt)
+    click.echo(result)
+
+
+if __name__ == "__main__":
+    cli()

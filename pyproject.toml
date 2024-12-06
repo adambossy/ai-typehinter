@@ -57,7 +57,7 @@ mixpanel = "4.10.1"
 monotonic = "1.6"
 multidict = "6.1.0"
 numpy = "1.26.4"
-openai = "1.53.0"
+openai = "^1.54.0"  # Update this line
 packaging = "24.1"
 pathspec = "0.12.1"
 pexpect = "4.9.0"
@@ -99,6 +99,8 @@ yarl = "1.17.1"
 zipp = "3.20.2"
 pytest = "^8.3.3"
 langchain = "^0.3.9"
+langchain-community = "^0.3.9"
+langchain-openai = "^0.2.11"
 
 [tool.poetry.scripts]
 typehint = "main:cli"
