@@ -48,11 +48,17 @@ class CallGraphAnalyzer(ast.NodeVisitor):
         if self.is_test_function(node.name):
             return
 
-        # Create or get the node for this function
+        current_node = self._get_or_create_function_node(node)
+        self._analyze_function_calls(node, current_node)
+        self.generic_visit(node)
+
+    def _get_or_create_function_node(self, node: ast.FunctionDef) -> FunctionNode:
+        """Create or retrieve a FunctionNode for the given function definition."""
         node_name = (
             f"{self.current_class}.{node.name}" if self.current_class else node.name
         )
         current_node = self.nodes.get(node_name)
+
         if not current_node:
             current_node = FunctionNode(
                 name=node.name,
@@ -60,78 +66,85 @@ class CallGraphAnalyzer(ast.NodeVisitor):
                 class_name=self.current_class,
             )
             self.nodes[node_name] = current_node
+            self._track_function_in_file(current_node)
 
-            # Track function order in file
-            if self.current_file not in self.files_to_functions:
-                self.files_to_functions[self.current_file] = []
-            self.files_to_functions[self.current_file].append(current_node)
+        return current_node
 
-        # Analyze function body for function calls
+    def _track_function_in_file(self, node: FunctionNode):
+        """Track the function's order of appearance in its file."""
+        if self.current_file not in self.files_to_functions:
+            self.files_to_functions[self.current_file] = []
+        self.files_to_functions[self.current_file].append(node)
+
+    def _analyze_function_calls(
+        self, node: ast.FunctionDef, current_node: FunctionNode
+    ):
+        """Analyze all function calls within a function body."""
         for child in ast.walk(node):
             if isinstance(child, ast.Call):
-                called_name = None
-                if isinstance(child.func, ast.Name):
-                    # If we're calling a class directly, treat it as calling its __init__
-                    if child.func.id in [
-                        n.class_name for n in self.nodes.values() if n.class_name
-                    ]:
-                        called_name = f"{child.func.id}.__init__"
-                    else:
-                        called_name = child.func.id
-                elif isinstance(child.func, ast.Attribute):
-                    if isinstance(child.func.value, ast.Name):
-                        if child.func.value.id == "self" and self.current_class:
-                            # Handle method calls within the same class
-                            called_name = f"{self.current_class}.{child.func.attr}"
-                        else:
-                            # Handle method calls on instances
-                            # Look up the type of the instance if possible
-                            instance_name = child.func.value.id
-                            method_name = child.func.attr
-
-                            # If we're calling a method on an instance of a class we just created
-                            if instance_name in [
-                                n.name
-                                for n in self.nodes.values()
-                                if isinstance(n.name, str)
-                            ]:
-                                # This is a method call on a class instance
-                                called_name = f"{instance_name}.{method_name}"
-                            else:
-                                # Try to find the class name from the instance
-                                for node_name in self.nodes:
-                                    if node_name.endswith(f".{instance_name}"):
-                                        class_name = node_name.split(".")[0]
-                                        called_name = f"{class_name}.{method_name}"
-                                        break
-                                if not called_name:
-                                    called_name = method_name
-
+                called_name = self._resolve_call_name(child)
                 if called_name:
-                    # Use called_name directly
-                    called_node = self.nodes.get(called_name)
-                    if not called_node:
-                        # Try to find the method with class prefix
-                        for existing_name in self.nodes:
-                            if existing_name.endswith(f".{called_name}"):
-                                called_node = self.nodes[existing_name]
-                                break
-
-                        if not called_node:
-                            called_node = FunctionNode(
-                                name=called_name.split(".")[-1],
-                                filename=self.current_file,
-                                class_name=(
-                                    called_name.split(".")[0]
-                                    if "." in called_name
-                                    else None
-                                ),
-                            )
-                            self.nodes[called_name] = called_node
-
+                    called_node = self._get_or_create_called_node(called_name)
                     current_node.add_callee(called_node)
 
-        self.generic_visit(node)
+    def _resolve_call_name(self, call_node: ast.Call) -> str:
+        """Resolve the full name of a called function."""
+        if isinstance(call_node.func, ast.Name):
+            return self._resolve_direct_call(call_node.func)
+        elif isinstance(call_node.func, ast.Attribute):
+            return self._resolve_attribute_call(call_node.func)
+        return None
+
+    def _resolve_direct_call(self, func_node: ast.Name) -> str:
+        """Resolve a direct function call (e.g., function_name())."""
+        # If we're calling a class directly, treat it as calling its __init__
+        if func_node.id in [n.class_name for n in self.nodes.values() if n.class_name]:
+            return f"{func_node.id}.__init__"
+        return func_node.id
+
+    def _resolve_attribute_call(self, func_node: ast.Attribute) -> str:
+        """Resolve a method call (e.g., object.method())."""
+        if not isinstance(func_node.value, ast.Name):
+            return None
+
+        instance_name = func_node.value.id
+        method_name = func_node.attr
+
+        if instance_name == "self" and self.current_class:
+            return f"{self.current_class}.{method_name}"
+
+        # Handle method calls on instances
+        if instance_name in [
+            n.name for n in self.nodes.values() if isinstance(n.name, str)
+        ]:
+            return f"{instance_name}.{method_name}"
+
+        # Try to find the class name from the instance
+        for node_name in self.nodes:
+            if node_name.endswith(f".{instance_name}"):
+                class_name = node_name.split(".")[0]
+                return f"{class_name}.{method_name}"
+
+        return method_name
+
+    def _get_or_create_called_node(self, called_name: str) -> FunctionNode:
+        """Get or create a FunctionNode for the called function."""
+        called_node = self.nodes.get(called_name)
+        if not called_node:
+            # Try to find the method with class prefix
+            for existing_name in self.nodes:
+                if existing_name.endswith(f".{called_name}"):
+                    return self.nodes[existing_name]
+
+            # Create new node if not found
+            called_node = FunctionNode(
+                name=called_name.split(".")[-1],
+                filename=self.current_file,
+                class_name=called_name.split(".")[0] if "." in called_name else None,
+            )
+            self.nodes[called_name] = called_node
+
+        return called_node
 
     def find_unreachable_functions(self) -> List[FunctionNode]:
         """Find functions that are defined but never called."""
