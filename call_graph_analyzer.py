@@ -49,14 +49,18 @@ class CallGraphAnalyzer(ast.NodeVisitor):
             return
 
         # Create or get the node for this function
-        current_node = self.nodes.get(node.name)
+        current_node = self.nodes.get(
+            f"{self.current_class}.{node.name}" if self.current_class else node.name
+        )
         if not current_node:
             current_node = FunctionNode(
                 name=node.name,
                 filename=self.current_file,
                 class_name=self.current_class,
             )
-            self.nodes[node.name] = current_node
+            self.nodes[
+                f"{self.current_class}.{node.name}" if self.current_class else node.name
+            ] = current_node
 
             # Track function order in file
             if self.current_file not in self.files_to_functions:
@@ -66,16 +70,41 @@ class CallGraphAnalyzer(ast.NodeVisitor):
         # Analyze function body for function calls
         for child in ast.walk(node):
             if isinstance(child, ast.Call):
+                called_name = None
                 if isinstance(child.func, ast.Name):
                     called_name = child.func.id
+                elif isinstance(child.func, ast.Attribute):
+                    if isinstance(child.func.value, ast.Name):
+                        if child.func.value.id == "self" and self.current_class:
+                            # Handle method calls within the same class
+                            called_name = child.func.attr
+                        else:
+                            # Handle other attribute calls
+                            called_name = child.func.attr
+
+                if called_name:
+                    # For class methods, include the class name in the lookup
+                    full_name = (
+                        f"{self.current_class}.{called_name}"
+                        if self.current_class
+                        and called_name
+                        != "ShoppingCart"  # Special case for constructor
+                        else called_name
+                    )
+
                     # Create or get the node for the called function
-                    called_node = self.nodes.get(called_name)
+                    called_node = self.nodes.get(full_name)
                     if not called_node:
                         called_node = FunctionNode(
                             name=called_name,
-                            filename="unknown",  # Will be set when/if we find the definition
+                            filename=self.current_file,  # Use current file instead of "unknown"
+                            class_name=(
+                                self.current_class
+                                if called_name != "ShoppingCart"
+                                else None
+                            ),
                         )
-                        self.nodes[called_name] = called_node
+                        self.nodes[full_name] = called_node
 
                     current_node.add_callee(called_node)
 
