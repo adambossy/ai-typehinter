@@ -76,8 +76,8 @@ def get_user_data(username):
 
 
 MODELS = {
-    "gpt-4": lambda: ChatOpenAI(
-        model="gpt-4", temperature=0.1, api_key=os.getenv("OPENAI_API_KEY")
+    "gpt-4o": lambda: ChatOpenAI(
+        model="gpt-4o", temperature=0.1, api_key=os.getenv("OPENAI_API_KEY")
     ),
     "claude": lambda: ChatAnthropic(
         model="claude-3-5-sonnet-20241022",
@@ -98,7 +98,7 @@ def process_data(data):
 @click.command()
 @click.option(
     "--model",
-    type=click.Choice(["gpt-4", "claude"]),
+    type=click.Choice(["gpt-4o", "claude"]),
     default="claude",
     help="The LLM model to use",
 )
