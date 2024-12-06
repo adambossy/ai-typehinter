@@ -44,7 +44,12 @@ class CallGraphAnalyzer(ast.NodeVisitor):
         self.current_class = old_class
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
-        # Skip test functions during graph construction
+        """Process a function definition node and analyze its calls.
+
+        Example:
+            Input node represents: def process_order(self): ...
+            Output: Creates/updates FunctionNode and analyzes its calls
+        """
         if self.is_test_function(node.name):
             return
 
@@ -53,7 +58,12 @@ class CallGraphAnalyzer(ast.NodeVisitor):
         self.generic_visit(node)
 
     def _get_or_create_function_node(self, node: ast.FunctionDef) -> FunctionNode:
-        """Create or retrieve a FunctionNode for the given function definition."""
+        """Create or retrieve a FunctionNode for the given function definition.
+
+        Example:
+            Input: node for 'def process_order(self)' with current_class='ShoppingCart'
+            Output: FunctionNode(name='process_order', class_name='ShoppingCart', ...)
+        """
         node_name = (
             f"{self.current_class}.{node.name}" if self.current_class else node.name
         )
@@ -71,7 +81,12 @@ class CallGraphAnalyzer(ast.NodeVisitor):
         return current_node
 
     def _track_function_in_file(self, node: FunctionNode):
-        """Track the function's order of appearance in its file."""
+        """Track the function's order of appearance in its file.
+
+        Example:
+            Input: FunctionNode for 'calculate_total'
+            Output: self.files_to_functions['/path/to/file.py'] = [..., calculate_total_node]
+        """
         if self.current_file not in self.files_to_functions:
             self.files_to_functions[self.current_file] = []
         self.files_to_functions[self.current_file].append(node)
@@ -79,7 +94,12 @@ class CallGraphAnalyzer(ast.NodeVisitor):
     def _analyze_function_calls(
         self, node: ast.FunctionDef, current_node: FunctionNode
     ):
-        """Analyze all function calls within a function body."""
+        """Analyze all function calls within a function body.
+
+        Example:
+            Input: node containing 'cart.add_item(price)'
+            Output: Adds 'ShoppingCart.add_item' to current_node's callees
+        """
         for child in ast.walk(node):
             if isinstance(child, ast.Call):
                 called_name = self._resolve_call_name(child)
@@ -88,7 +108,12 @@ class CallGraphAnalyzer(ast.NodeVisitor):
                     current_node.add_callee(called_node)
 
     def _resolve_call_name(self, call_node: ast.Call) -> str:
-        """Resolve the full name of a called function."""
+        """Resolve the full name of a called function.
+
+        Example:
+            Input: AST node for 'cart.add_item(price)'
+            Output: 'ShoppingCart.add_item'
+        """
         if isinstance(call_node.func, ast.Name):
             return self._resolve_direct_call(call_node.func)
         elif isinstance(call_node.func, ast.Attribute):
@@ -96,14 +121,23 @@ class CallGraphAnalyzer(ast.NodeVisitor):
         return None
 
     def _resolve_direct_call(self, func_node: ast.Name) -> str:
-        """Resolve a direct function call (e.g., function_name())."""
-        # If we're calling a class directly, treat it as calling its __init__
+        """Resolve a direct function call (e.g., function_name()).
+
+        Example:
+            Input: AST node for 'ShoppingCart()'
+            Output: 'ShoppingCart.__init__'
+        """
         if func_node.id in [n.class_name for n in self.nodes.values() if n.class_name]:
             return f"{func_node.id}.__init__"
         return func_node.id
 
     def _resolve_attribute_call(self, func_node: ast.Attribute) -> str:
-        """Resolve a method call (e.g., object.method())."""
+        """Resolve a method call (e.g., object.method()).
+
+        Example:
+            Input: AST node for 'self.calculate_total()'
+            Output: 'ShoppingCart.calculate_total'
+        """
         if not isinstance(func_node.value, ast.Name):
             return None
 
@@ -128,7 +162,12 @@ class CallGraphAnalyzer(ast.NodeVisitor):
         return method_name
 
     def _get_or_create_called_node(self, called_name: str) -> FunctionNode:
-        """Get or create a FunctionNode for the called function."""
+        """Get or create a FunctionNode for the called function.
+
+        Example:
+            Input: 'ShoppingCart.add_item'
+            Output: FunctionNode(name='add_item', class_name='ShoppingCart', ...)
+        """
         called_node = self.nodes.get(called_name)
         if not called_node:
             # Try to find the method with class prefix
