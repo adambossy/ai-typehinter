@@ -15,9 +15,11 @@ class CallGraphAnalyzer(ast.NodeVisitor):
         # Key: function name, Value: set of functions that call it
         self.reverse_call_graph: Dict[str, Set[str]] = {}
 
-        # Dictionary to track function definitions
-        # Key: function name, Value: filename where it's defined
+        # Dictionary to track function definitions and their files
         self.function_definitions: Dict[str, str] = {}
+
+        # Dictionary to track functions by file, preserving order
+        self.files_to_functions: Dict[str, List[str]] = {}
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
         # Record the function definition
@@ -27,7 +29,11 @@ class CallGraphAnalyzer(ast.NodeVisitor):
         if self.is_test_function(current_function):
             return
 
+        # Track function definition and maintain file-based ordering
         self.function_definitions[current_function] = self.current_file
+        if self.current_file not in self.files_to_functions:
+            self.files_to_functions[self.current_file] = []
+        self.files_to_functions[self.current_file].append(current_function)
 
         # Initialize the call graph entries for this function
         if current_function not in self.call_graph:
@@ -135,12 +141,16 @@ def cli(project_path: str):
     analyzer.analyze_repository(project_path)
 
     print("Call Graph:")
-    for func, calls in analyzer.call_graph.items():
-        callers = analyzer.reverse_call_graph.get(func, set())
-        print(f"{func}:")
-        print(f"  Calls: {', '.join(calls) or 'No direct calls'}")
-        print(f"  Called by: {', '.join(callers) or 'Never called'}")
-        print()
+    # Sort files for consistent output
+    for file_path in sorted(analyzer.files_to_functions.keys()):
+        print(f"\nFile: {file_path}")
+        # Functions are already in order of appearance
+        for func in analyzer.files_to_functions[file_path]:
+            calls = analyzer.call_graph.get(func, set())
+            callers = analyzer.reverse_call_graph.get(func, set())
+            print(f"{func}:")
+            print(f"  Calls: {', '.join(sorted(calls)) or 'No direct calls'}")
+            print(f"  Called by: {', '.join(sorted(callers)) or 'Never called'}")
 
     print("\nUnreachable Functions:")
     unreachable = analyzer.find_unreachable_functions()
