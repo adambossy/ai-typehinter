@@ -3,37 +3,35 @@ from pathlib import Path
 from typing import List
 
 import click
-from aider import models
-from aider.coders import Coder
-from aider.io import InputOutput
 from dotenv import load_dotenv
 from git.repo import Repo
+from langchain_anthropic import ChatAnthropic
+
+from call_graph_analyzer import CallGraphAnalyzer, FunctionNode
+from conversation import Conversation
 
 
 class TypeHinter:
-    def __init__(self, project_path: str, coder: Coder):
+    def __init__(self, project_path: str):
         self.project_path = Path(project_path)
-        self.coder = coder
         self.repo = Repo(project_path)
+        self.analyzer = CallGraphAnalyzer()
+        self.conversation = Conversation(
+            ChatAnthropic(
+                model="claude-3-5-sonnet-20241022",
+                temperature=0.1,
+                max_tokens=4096,
+            )
+        )
+
+        # Analyze the codebase upfront
+        self.analyzer.analyze_repository(str(project_path))
 
     def get_python_files(self) -> List[Path]:
         """Get all Python files in the project directory."""
         return list(self.project_path.rglob("*.py"))
 
-    def extract_functions(self, file_path: Path) -> List[ast.FunctionDef]:
-        """Extract all function definitions from a Python file."""
-        with open(file_path, "r") as f:
-            tree = ast.parse(f.read())
-
-        functions = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef):
-                functions.append(node)
-        return functions
-
-    def get_function_source(
-        self, file_path: Path, function_node: ast.FunctionDef
-    ) -> str:
+    def get_function_source(self, file_path: Path, function_node: FunctionNode) -> str:
         """Get the source code of a function."""
         with open(file_path, "r") as f:
             source_lines = f.readlines()
@@ -41,19 +39,59 @@ class TypeHinter:
             source_lines[function_node.lineno - 1 : function_node.end_lineno]
         )
 
-    def get_type_hints(self, function_source: str, file_path: Path) -> str:
-        """Get type hints for a function using Aider's Coder interface."""
-        prompt = f"""Add appropriate type hints to this Python function from file {file_path.name}. 
-        Return ONLY the type-hinted version of the function, nothing else.
-        Keep all existing docstrings and comments. Only add type hints.
-        
-        Here's the function:
-        
-        {function_source}"""
+    def get_type_hints(
+        self, function_source: str, file_path: Path, function_name: str
+    ) -> str:
+        """Get type hints for a function using context from the call graph."""
 
-        response = self.coder.run_one(prompt, preproc=True)
-        print(f"Response: {response}")
-        return response
+        print(f"Entering get_type_hints with parameters:")
+        print(f"  function_source: {function_source}")
+        print(f"  file_path: {file_path}")
+        print(f"  function_name: {function_name}")
+
+        # Get calling and callee functions
+        function_node = None
+        for node in self.analyzer.nodes.values():
+            if node.name == function_name and node.filename == str(file_path):
+                function_node = node
+                break
+
+        print(f"Found function node: {function_node}")
+
+        if not function_node:
+            return function_source
+
+        # Build context about related functions
+        context = []
+        if function_node.callers:
+            context.append("Called by functions:")
+            for caller in function_node.callers:
+                context.append(
+                    f"- {caller.class_name + '.' if caller.class_name else ''}{caller.name}"
+                )
+
+        if function_node.callees:
+            context.append("\nCalls these functions:")
+            for callee in function_node.callees:
+                context.append(
+                    f"- {callee.class_name + '.' if callee.class_name else ''}{callee.name}"
+                )
+
+        context_str = "\n".join(context)
+
+        prompt = f"""Add appropriate type hints to this Python function from file {file_path.name}.
+        
+Function Context:
+{context_str}
+
+Here's the function to type hint:
+
+{function_source}
+
+Return ONLY the type-hinted version of the function, nothing else.
+Keep all existing docstrings and comments. Only add type hints."""
+
+        return self.conversation.completion(prompt)
 
     def update_file_with_type_hints(
         self, file_path: Path, original_func: str, hinted_func: str
@@ -102,13 +140,16 @@ class TypeHinter:
         python_files = self.get_python_files()
 
         for file_path in python_files:
-            # Add file to context before processing
-            self.coder.add_rel_fname(str(file_path))
+            walker = self.analyzer.get_walker()
+            for function_node in walker:
+                original_source = self.get_function_source(file_path, function_node)
+                type_hinted_source = self.get_type_hints(
+                    original_source, file_path, function_node.name
+                )
 
-            functions = self.extract_functions(file_path)
-            for func in functions:
-                original_source = self.get_function_source(file_path, func)
-                type_hinted_source = self.get_type_hints(original_source, file_path)
+                if not type_hinted_source:
+                    print(f"Skipping {function_node.name} in {file_path}")
+                    continue
 
                 # Show diff and get confirmation
                 if self.show_diff_and_confirm(
@@ -117,12 +158,9 @@ class TypeHinter:
                     self.update_file_with_type_hints(
                         file_path, original_source, type_hinted_source
                     )
-                    self.commit_changes(file_path, func.name)
+                    self.commit_changes(file_path, function_node.name)
                 else:
-                    print(f"Skipping changes to {func.name} in {file_path}")
-
-            # Remove file from context after processing
-            self.coder.remove_file(str(file_path))
+                    print(f"Skipping changes to {function_node.name} in {file_path}")
 
 
 @click.command()
@@ -134,16 +172,7 @@ class TypeHinter:
 )
 def cli(project_path: str):
     """Add type hints to Python projects using Claude API."""
-    main_model = models.Model(
-        "claude-3-5-sonnet-20241022",
-        editor_model="claude-3-5-sonnet-20241022",
-        editor_edit_format="editor-diff",
-    )
-
-    io = InputOutput(llm_history_file="typehinter_chat_history.txt")
-    coder = Coder.create(main_model=main_model, io=io, auto_commits=False)
-
-    type_hinter = TypeHinter(project_path, coder)
+    type_hinter = TypeHinter(project_path)
     type_hinter.process_project()
 
 

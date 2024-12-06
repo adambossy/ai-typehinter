@@ -1,17 +1,29 @@
 import ast
 import os
+from pprint import pprint
 from typing import Dict, List, Set
 
 import click
 
 
 class FunctionNode:
-    def __init__(self, name: str, filename: str, class_name: str = None):
+    def __init__(
+        self,
+        name: str,
+        filename: str,
+        lineno: int,
+        end_lineno: int,
+        class_name: str = None,
+        is_called_only: bool = False,
+    ):
         self.name: str = name
         self.filename: str = filename
         self.class_name: str = class_name
         self.callees: Set[FunctionNode] = set()  # Functions this function calls
         self.callers: Set[FunctionNode] = set()  # Functions that call this function
+        self.lineno: int = lineno
+        self.end_lineno: int = end_lineno
+        self.is_called_only: bool = is_called_only
 
     def __repr__(self) -> str:
         class_prefix = f"{self.class_name}." if self.class_name else ""
@@ -24,6 +36,53 @@ class FunctionNode:
 
     def __str__(self) -> str:
         return f"{self.name}"
+
+
+class CallGraphWalker:
+    """Iterator class that walks a call graph from leaf nodes up to their callers."""
+
+    def __init__(self, analyzer: "CallGraphAnalyzer"):
+        """Initialize the walker with a CallGraphAnalyzer instance.
+
+        Args:
+            analyzer: The CallGraphAnalyzer containing the call graph to walk
+        """
+        self.analyzer = analyzer
+        self.visited = set()
+        self.leaf_nodes = [
+            node
+            for node in analyzer.nodes.values()
+            if not node.callees and not node.is_called_only
+        ]
+        pprint(self.leaf_nodes)
+
+    def __iter__(self):
+        """Return self as iterator."""
+        return self
+
+    def __next__(self) -> FunctionNode:
+        """Get the next function in bottom-up order.
+
+        Returns:
+            FunctionNode: The next unvisited function in bottom-up order
+
+        Raises:
+            StopIteration: When all reachable nodes have been visited
+        """
+        while self.leaf_nodes:
+            current = self.leaf_nodes.pop(0)
+
+            # Skip if we've seen this node before
+            if current in self.visited:
+                continue
+
+            # Mark as visited and add its callers to the queue
+            self.visited.add(current)
+            self.leaf_nodes.extend(current.callers)
+
+            return current
+
+        raise StopIteration()
 
 
 class CallGraphAnalyzer(ast.NodeVisitor):
@@ -74,9 +133,18 @@ class CallGraphAnalyzer(ast.NodeVisitor):
                 name=node.name,
                 filename=self.current_file,
                 class_name=self.current_class,
+                lineno=node.lineno,
+                end_lineno=node.end_lineno,
+                is_called_only=False,
             )
             self.nodes[node_name] = current_node
             self._track_function_in_file(current_node)
+        else:
+            # If we found an existing node, update it as we now have its implementation
+            current_node.is_called_only = False
+            current_node.filename = self.current_file
+            current_node.lineno = node.lineno
+            current_node.end_lineno = node.end_lineno
 
         return current_node
 
@@ -94,17 +162,13 @@ class CallGraphAnalyzer(ast.NodeVisitor):
     def _analyze_function_calls(
         self, node: ast.FunctionDef, current_node: FunctionNode
     ):
-        """Analyze all function calls within a function body.
-
-        Example:
-            Input: node containing 'cart.add_item(price)'
-            Output: Adds 'ShoppingCart.add_item' to current_node's callees
-        """
+        """Analyze all function calls within a function body."""
         for child in ast.walk(node):
             if isinstance(child, ast.Call):
                 called_name = self._resolve_call_name(child)
                 if called_name:
-                    called_node = self._get_or_create_called_node(called_name)
+                    # Pass the call node to get line numbers
+                    called_node = self._get_or_create_called_node(called_name, child)
                     current_node.add_callee(called_node)
 
     def _resolve_call_name(self, call_node: ast.Call) -> str:
@@ -161,13 +225,10 @@ class CallGraphAnalyzer(ast.NodeVisitor):
 
         return method_name
 
-    def _get_or_create_called_node(self, called_name: str) -> FunctionNode:
-        """Get or create a FunctionNode for the called function.
-
-        Example:
-            Input: 'ShoppingCart.add_item'
-            Output: FunctionNode(name='add_item', class_name='ShoppingCart', ...)
-        """
+    def _get_or_create_called_node(
+        self, called_name: str, call_node: ast.Call
+    ) -> FunctionNode:
+        """Get or create a FunctionNode for the called function."""
         called_node = self.nodes.get(called_name)
         if not called_node:
             # Try to find the method with class prefix
@@ -175,11 +236,14 @@ class CallGraphAnalyzer(ast.NodeVisitor):
                 if existing_name.endswith(f".{called_name}"):
                     return self.nodes[existing_name]
 
-            # Create new node if not found
+            # Create new node if not found - mark it as called-only
             called_node = FunctionNode(
                 name=called_name.split(".")[-1],
-                filename=self.current_file,
+                filename="unknown",  # Since we don't know the file yet
                 class_name=called_name.split(".")[0] if "." in called_name else None,
+                lineno=call_node.lineno,  # Use the call site line number
+                end_lineno=call_node.end_lineno,  # Use the call site end line number
+                is_called_only=True,  # Mark as called-only
             )
             self.nodes[called_name] = called_node
 
@@ -203,6 +267,7 @@ class CallGraphAnalyzer(ast.NodeVisitor):
         :param func_name: Name of the function to check
         :return: True if the function is a test function, False otherwise
         """
+        print(f"Checking if {func_name} is a test function")
         return func_name.startswith("test_") or (  # Test functions
             func_name.startswith("Test") and func_name[0].isupper()
         )  # Test classes
@@ -252,6 +317,14 @@ class CallGraphAnalyzer(ast.NodeVisitor):
                 print(
                     f"  Called by: {', '.join(str(n) for n in sorted(node.callers, key=lambda x: x.name)) or 'Never called'}"
                 )
+
+    def get_walker(self) -> CallGraphWalker:
+        """Create a new walker to traverse the call graph bottom-up.
+
+        Returns:
+            CallGraphWalker: An iterator that yields functions from leaves up to callers
+        """
+        return CallGraphWalker(self)
 
 
 @click.command()

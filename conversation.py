@@ -25,20 +25,31 @@ class Conversation:
         # Define the system prompt
         self.system_prompt = """You are a helpful AI assistant focused on adding type hints to Python code.
 When asked to add type hints to a function:
-1. Analyze the function's parameters and return values
-2. Add appropriate Python 3.9+ type hints while preserving all existing functionality
+1. Consider the provided context about calling and called functions
+2. Analyze the function's parameters and return values
+3. Add appropriate Python 3.9+ type hints while preserving all existing functionality
    - Use built-in types like list[str] instead of List[str]
    - Use | for union types instead of Union (e.g., str | None)
    - Use dict[str, str | bool] instead of Dict[str, Union[str, bool]]
-3. Keep all docstrings and comments intact
-4. Return only the type-hinted version of the function"""
+4. Keep all docstrings and comments intact
+5. Return only the type-hinted version of the function"""
 
-        # Create the conversation chain
+        # Create the conversation chain with example
         self.prompt = ChatPromptTemplate.from_messages(
             [
                 SystemMessage(content=self.system_prompt),
                 HumanMessage(
                     content="""Add type hints to this function:
+
+Function Context:
+Called by functions:
+- ShoppingCart.checkout
+- Order.validate
+
+Calls these functions:
+- Database.query
+- Validator.check_amount
+
 def get_user_data(username):
     '''Fetch user data from database'''
     return {"name": username, "active": True}"""
@@ -66,6 +77,7 @@ def get_user_data(username):
             The type-hinted version of the function
         """
         response = self.chain.invoke({"input": [HumanMessage(content=prompt)]})
+        print(response.to_messages())
         return response.content
 
 
