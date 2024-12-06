@@ -120,24 +120,58 @@ Keep all existing docstrings, comments, and whitespace exactly as they appear. O
 
         return self.conversation.completion(prompt)
 
-    def update_file_with_type_hints(
-        self, file_path: Path, original_func: str, hinted_func: str, base_indent: int
+    def replace_lines_in_file(
+        self, file_path: Path, start_line: int, end_line: int, new_content: str
     ) -> None:
-        """Update the file by replacing the original function with its type-hinted version."""
+        """Replace specific lines in a file with new content.
+
+        Args:
+            file_path: Path to the file to modify
+            start_line: Line number where replacement should begin (1-based)
+            end_line: Line number where replacement should end (1-based)
+            new_content: The new content to insert
+        """
+        with open(file_path, "r") as f:
+            lines = f.readlines()
+
+        # Convert new_content to lines, preserving the final newline if it exists
+        new_lines = new_content.splitlines(keepends=True)
+
+        # Replace the specified lines with the new content
+        lines[start_line - 1 : end_line] = new_lines
+
+        # Write the modified content back to the file
+        with open(file_path, "w") as f:
+            f.writelines(lines)
+
+    def update_file_with_type_hints(
+        self,
+        file_path: Path,
+        hinted_func: str,
+        base_indent: int,
+        function_node: FunctionNode,
+    ) -> None:
+        """Update the file by replacing the original function with its type-hinted version.
+
+        Args:
+            file_path: Path to the file to modify
+            hinted_func: The new type-hinted function code
+            base_indent: The original indentation level to maintain
+            function_node: The FunctionNode containing line number information
+        """
         # Re-indent the type-hinted function
         indented_lines = []
         for line in hinted_func.splitlines():
             # Add the original base indentation to each line
             indented_lines.append(" " * base_indent + line if line.strip() else line)
-        indented_hinted_func = "\n".join(indented_lines)
+        indented_hinted_func = "\n".join(indented_lines) + "\n"  # Add final newline
 
-        with open(file_path, "r") as f:
-            content = f.read()
-
-        new_content = content.replace(original_func, indented_hinted_func)
-
-        with open(file_path, "w") as f:
-            f.write(new_content)
+        self.replace_lines_in_file(
+            file_path,
+            function_node.lineno,
+            function_node.end_lineno,
+            indented_hinted_func,
+        )
 
     def commit_changes(self, file_path: Path, function_name: str) -> None:
         """Commit the changes to git."""
@@ -200,7 +234,7 @@ Keep all existing docstrings, comments, and whitespace exactly as they appear. O
                 file_path, original_source, type_hinted_source
             ):
                 self.update_file_with_type_hints(
-                    file_path, original_source, type_hinted_source, base_indent
+                    file_path, type_hinted_source, base_indent, function_node
                 )
                 self.commit_changes(file_path, function_node.name)
             else:
