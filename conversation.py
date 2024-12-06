@@ -108,6 +108,11 @@ def cli(model: str, prompt: str) -> None:
     llm = MODELS[model]()
     conversation = Conversation(llm)
 
+    click.echo("\nInput function:")
+    click.echo(
+        prompt.split("Add type hints to this function:\n")[1]
+    )  # Extract just the function part
+    click.echo("\nType-hinted version:")
     result = conversation.completion(prompt)
     click.echo(result)
 
