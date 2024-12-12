@@ -2,6 +2,7 @@
 .aider*
 __pycache__/
 repos/
+aider/
 aider_chat_history.txt
 typehinter_chat_history.txt
 ManyTypes4PyDataset*/
