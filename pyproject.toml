@@ -108,6 +108,7 @@ torch = "^2.5.1"
 torchvision = "^0.20.1"
 torchaudio = "^2.5.1"
 mypy = "^1.13.0"
+libcst = "^1.5.1"
 
 [tool.poetry.scripts]
 typehint = "main:cli"
