@@ -112,7 +112,7 @@ class TypeHintEvaluator:
         if output_dir.exists():
             shutil.rmtree(output_dir)
         shutil.copytree(input_dir, output_dir)
-        type_hinter = TypeHinter(output_dir)
+        type_hinter = TypeHinter(output_dir, auto_commit=True)
         type_hinter.process_project()
 
     def _collect_hint_stats(self, project_dir: Path) -> dict:

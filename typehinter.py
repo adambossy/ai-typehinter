@@ -9,7 +9,7 @@ from conversation import Conversation
 
 
 class TypeHinter:
-    def __init__(self, project_path: str):
+    def __init__(self, project_path: str, auto_commit: bool = False):
         self.project_path = Path(project_path)
         self.repo = Repo(project_path)
         self.analyzer = CallGraphAnalyzer()
@@ -20,6 +20,7 @@ class TypeHinter:
                 max_tokens=4096,
             )
         )
+        self.auto_commit = auto_commit
 
         # Analyze the codebase upfront
         self.analyzer.analyze_repository(str(project_path))
@@ -228,7 +229,7 @@ Keep all existing docstrings, comments, and whitespace exactly as they appear. O
                 continue
 
             # Show diff and get confirmation
-            if self.show_diff_and_confirm(
+            if self.auto_commit or self.show_diff_and_confirm(
                 file_path, original_source, type_hinted_source
             ):
                 self.update_file_with_type_hints(
