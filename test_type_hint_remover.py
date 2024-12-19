@@ -159,70 +159,6 @@ class MyClass:
         self.collector = None
 
 
-class TestProcessSingleFile(unittest.TestCase):
-    def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
-        self.remover = TypeHintRemover(self.temp_dir)
-
-    def test_process_file_contents(self):
-        self.maxDiff = None
-        """Test processing file contents with type hints, docstrings, and comments."""
-        input_code = '''
-def process_data(data: List[str]) -> Dict[str, int]:
-    """Process the input data and return a dictionary of results.
-    
-    Args:
-        data: List of strings to process
-    
-    Returns:
-        Dictionary mapping strings to counts
-    """
-    result = {}  # Initialize empty dictionary
-
-    # Process each item in the data
-    for item in data:
-        if item in result:  # Check if we've seen this item
-            result[item] += 1
-        else:
-            result[item] = 1  # First occurrence
-
-    return result'''
-
-        expected_output = '''
-def process_data(data):
-    """Process the input data and return a dictionary of results.
-    
-    Args:
-        data: List of strings to process
-    
-    Returns:
-        Dictionary mapping strings to counts
-    """
-    result = {}  # Initialize empty dictionary
-
-    # Process each item in the data
-    for item in data:
-        if item in result:  # Check if we've seen this item
-            result[item] += 1
-        else:
-            result[item] = 1  # First occurrence
-
-    return result'''
-
-        input_code = input_code.strip()
-
-        result = self.remover.process_file_contents(input_code)
-
-        result = result.strip()
-        expected_output = expected_output.strip()
-
-        print("Input: ", input_code)
-        print("Output: ", result)
-        print("Expected: ", expected_output)
-
-        self.assertEqual(result, expected_output)
-
-
 class TestTypeHintCollection(TestTypeHintCollectorBase):
     def setup_method(self):
         """Set up a TypeHintCollector for collecting type hints."""
@@ -416,3 +352,67 @@ class Foo:
     def teardown_method(self):
         """Clean up after each test."""
         self.collector = None
+
+
+class TestProcessSingleFile(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.remover = TypeHintRemover(self.temp_dir)
+
+    def test_process_file_contents(self):
+        self.maxDiff = None
+        """Test processing file contents with type hints, docstrings, and comments."""
+        input_code = '''
+def process_data(data: List[str]) -> Dict[str, int]:
+    """Process the input data and return a dictionary of results.
+    
+    Args:
+        data: List of strings to process
+    
+    Returns:
+        Dictionary mapping strings to counts
+    """
+    result = {}  # Initialize empty dictionary
+
+    # Process each item in the data
+    for item in data:
+        if item in result:  # Check if we've seen this item
+            result[item] += 1
+        else:
+            result[item] = 1  # First occurrence
+
+    return result'''
+
+        expected_output = '''
+def process_data(data):
+    """Process the input data and return a dictionary of results.
+    
+    Args:
+        data: List of strings to process
+    
+    Returns:
+        Dictionary mapping strings to counts
+    """
+    result = {}  # Initialize empty dictionary
+
+    # Process each item in the data
+    for item in data:
+        if item in result:  # Check if we've seen this item
+            result[item] += 1
+        else:
+            result[item] = 1  # First occurrence
+
+    return result'''
+
+        input_code = input_code.strip()
+
+        result = self.remover.process_file_contents(input_code)
+
+        result = result.strip()
+        expected_output = expected_output.strip()
+
+        print("Input: ", input_code)
+        print("Output: ", result)
+        print("Expected: ", expected_output)
+
+        self.assertEqual(result, expected_output)
