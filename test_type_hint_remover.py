@@ -2,13 +2,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import libcst as cst
 import pytest
 from libcst._exceptions import ParserSyntaxError
+from libcst.metadata import MetadataWrapper
 
-from type_hint_remover import TypeHintRemover
+from type_hint_remover import TypeHintCollector, TypeHintRemover
 
 
-class TestTypeHintRemover:
+class TestTypeHintRemoval:
     def setup_method(self):
         """Set up a temporary directory for test files."""
         self.temp_dir = tempfile.mkdtemp()
@@ -222,3 +224,92 @@ def process_data(data):
         print("Expected: ", expected_output)
 
         self.assertEqual(result, expected_output)
+
+
+class TestTypeHintCollection:
+    def setup_method(self):
+        """Set up a temporary directory for test files."""
+        self.collector = TypeHintCollector()
+
+    def process_code(self, code: str) -> str:
+        """Helper method to process code using TypeHintCollector."""
+        module = cst.parse_module(code)
+        wrapper = MetadataWrapper(module)
+        modified_module = wrapper.visit(self.collector)
+        return modified_module.code
+
+    def test_no_type_hint_assignment(self):
+        """Test that simple assignment without type hint collects nothing."""
+        original = "x = 5"
+
+        processed = self.process_code(original)
+        annotations = self.collector.annotations
+
+        assert processed == original
+        assert len(annotations["variables"]) == 0
+
+    def test_simple_type_hint_assignment(self):
+        """Test that simple assignment with type hint collects the type."""
+        original = "x: int = 5"
+        expected_output = "x = 5"
+
+        processed = self.process_code(original)
+        annotations = self.collector.annotations
+
+        assert processed == expected_output
+        assert len(annotations["variables"]) == 1
+        assert "<module>.x" in annotations["variables"]
+        assert annotations["variables"]["<module>.x"].annotation.value == "int"
+
+    def test_function_no_type_hints(self):
+        """Test that function without type hints collects nothing."""
+        original = """def foo(bar):
+    return bar + 1"""
+
+        processed = self.process_code(original)
+        annotations = self.collector.annotations
+
+        assert processed == original
+        assert len(annotations["functions"]) == 0
+        assert len(annotations["parameters"]) == 0
+
+    def test_function_param_type_hint(self):
+        """Test that function with parameter type hint collects the type."""
+        original = """def foo(bar: int):
+    return bar + 1"""
+        expected_output = """def foo(bar):
+    return bar + 1"""
+
+        processed = self.process_code(original)
+        annotations = self.collector.annotations
+
+        assert processed == expected_output
+        assert len(annotations["parameters"]) == 1
+        assert "<module>.foo" in annotations["parameters"]
+        assert (
+            annotations["parameters"]["<module>.foo"]["bar"].annotation.value == "int"
+        )
+
+    def test_function_param_and_return_type_hints(self):
+        """Test that function with parameter and return type hints collects both types."""
+        original = """def foo(bar: int) -> int:
+    return bar + 1"""
+        expected_output = """def foo(bar):
+    return bar + 1"""
+
+        processed = self.process_code(original)
+        annotations = self.collector.annotations
+
+        assert processed == expected_output
+        assert len(annotations["functions"]) == 1
+        assert "<module>.foo" in annotations["functions"]
+        assert annotations["functions"]["<module>.foo"].annotation.value == "int"
+        assert len(annotations["parameters"]) == 1
+        assert "<module>.foo" in annotations["parameters"]
+        assert (
+            annotations["parameters"]["<module>.foo"]["bar"].annotation.value == "int"
+        )
+
+    def teardown_method(self):
+        """Clean up after each test."""
+        self.collector = None

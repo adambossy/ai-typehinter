@@ -1,39 +1,111 @@
 import ast
 import os
-import tokenize
 from difflib import unified_diff
-from io import BytesIO
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Tuple
 
 import click
 import libcst as cst
+from libcst.metadata import ParentNodeProvider
 
 from utils import is_test_file
 
 
-class TypeHintTransformer(cst.CSTTransformer):
+class TypeHintCollector(cst.CSTTransformer):
+    METADATA_DEPENDENCIES = (ParentNodeProvider,)
 
-    def leave_FunctionDef(self, original_node, updated_node):
+    def __init__(self):
+        super().__init__()
+        self.annotations = {
+            "functions": {},  # fully_qualified_name -> return_type
+            "parameters": {},  # fully_qualified_name -> {param_name -> type}
+            "variables": {},  # fully_qualified_name -> type
+        }
+        self.current_namespace = []
+        self.module_name = None
+
+    def visit_Module(self, node: cst.Module) -> None:
+        # Get module name from first statement if it's a docstring
+        if (
+            node.body
+            and isinstance(node.body[0], cst.SimpleStatementLine)
+            and isinstance(node.body[0].body[0], cst.Expr)
+            and isinstance(node.body[0].body[0].value, cst.SimpleString)
+        ):
+            self.module_name = node.body[0].body[0].value.value.strip("\"' ")
+        else:
+            self.module_name = "<module>"
+        self.current_namespace = [self.module_name]
+
+    def visit_ClassDef(self, node: cst.ClassDef) -> None:
+        self.current_namespace.append(node.name.value)
+
+    def leave_ClassDef(
+        self, original_node: cst.ClassDef, updated_node: cst.ClassDef
+    ) -> cst.ClassDef:
+        self.current_namespace.pop()
+        return updated_node
+
+    def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
+        self.current_namespace.append(node.name.value)
+
+    def leave_FunctionDef(
+        self, original_node: cst.FunctionDef, updated_node: cst.FunctionDef
+    ) -> cst.FunctionDef:
+        # Record return type annotation if present
+        if original_node.returns:
+            qualified_name = ".".join(self.current_namespace)
+            self.annotations["functions"][qualified_name] = original_node.returns
+
+        self.current_namespace.pop()
+
         # Remove return type annotations
         if original_node.returns:
-            # Create a new function definition without return type
             return updated_node.with_changes(returns=None)
         return updated_node
 
-    def leave_Param(self, original_node, updated_node):
+    def leave_Param(
+        self, original_node: cst.Param, updated_node: cst.Param
+    ) -> cst.Param:
+        # Record parameter type annotation if present
+        if original_node.annotation:
+            qualified_name = ".".join(self.current_namespace)
+            if qualified_name not in self.annotations["parameters"]:
+                self.annotations["parameters"][qualified_name] = {}
+            self.annotations["parameters"][qualified_name][
+                original_node.name.value
+            ] = original_node.annotation
+
         # Remove parameter type annotations
         if original_node.annotation:
-            # Create a new parameter without type annotation
             return updated_node.with_changes(annotation=None)
         return updated_node
 
-    def leave_AnnAssign(self, original_node, updated_node):
-        # Convert AnnAssign to regular Assign by keeping only the target and value
+    def leave_AnnAssign(
+        self, original_node: cst.AnnAssign, updated_node: cst.AnnAssign
+    ) -> cst.Assign:
+        target_value = original_node.target.value
+        if isinstance(target_value, cst.Name):
+            target_value = target_value.value  # Extract the actual name value
+
+        # Record variable type annotation with namespace
+        qualified_name = ".".join(self.current_namespace + [target_value])
+        self.annotations["variables"][qualified_name] = original_node.annotation
+
+        # Convert AnnAssign to regular Assign
         return cst.Assign(
             targets=[cst.AssignTarget(target=updated_node.target)],
             value=updated_node.value or cst.Name("None"),
         )
+
+    def _get_parent_function(self, node):
+        # Use metadata to get the parent function node
+        parent = self.get_metadata(ParentNodeProvider, node)
+        while parent:
+            if isinstance(parent, cst.FunctionDef):
+                return parent.name.value
+            parent = self.get_metadata(ParentNodeProvider, parent)
+        return None
 
 
 class TypeHintRemover(ast.NodeTransformer):
@@ -50,12 +122,13 @@ class TypeHintRemover(ast.NodeTransformer):
 
         return original_source, self.process_file_contents(original_source)
 
-    def process_file_contents(self, original_source: str) -> Tuple[str, str]:
+    def process_file_contents(self, original_source: str) -> str:
         module = cst.parse_module(original_source)
+        wrapper = cst.MetadataWrapper(module)
 
         # Apply the transformer
-        transformer = TypeHintTransformer()
-        modified_module = module.visit(transformer)
+        collector = TypeHintCollector()
+        modified_module = wrapper.visit(collector)
 
         # Convert back to source code
         return modified_module.code
