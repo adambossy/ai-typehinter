@@ -2,7 +2,6 @@ import ast
 import os
 from difflib import unified_diff
 from pathlib import Path
-from typing import Tuple
 
 import click
 import libcst as cst
@@ -114,7 +113,7 @@ class TypeHintRemover(ast.NodeTransformer):
     def __init__(self, project_path: str):
         self.project_path = Path(project_path)
 
-    def process_file(self, file_path: Path) -> Tuple[str, str]:
+    def process_file(self, file_path: Path) -> tuple[str, str]:
         """Process a single Python file to remove type hints while preserving comments."""
         # Read original source
         with open(file_path, "r", encoding="utf-8") as f:
