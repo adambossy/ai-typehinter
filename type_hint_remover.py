@@ -68,12 +68,12 @@ class TypeHintCollector(cst.CSTTransformer):
     ) -> cst.Param:
         # Record parameter type annotation if present
         if original_node.annotation:
-            qualified_name = ".".join(self.current_namespace)
+            qualified_name = ".".join(
+                self.current_namespace + [original_node.name.value]
+            )
             if qualified_name not in self.annotations["parameters"]:
                 self.annotations["parameters"][qualified_name] = {}
-            self.annotations["parameters"][qualified_name][
-                original_node.name.value
-            ] = original_node.annotation
+            self.annotations["parameters"][qualified_name] = original_node.annotation
 
         # Remove parameter type annotations
         if original_node.annotation:
@@ -83,9 +83,17 @@ class TypeHintCollector(cst.CSTTransformer):
     def leave_AnnAssign(
         self, original_node: cst.AnnAssign, updated_node: cst.AnnAssign
     ) -> cst.Assign:
-        target_value = original_node.target.value
-        if isinstance(target_value, cst.Name):
-            target_value = target_value.value  # Extract the actual name value
+        # Handle both class-level and instance-level annotations
+        if isinstance(original_node.target, cst.Name):
+            # Class-level annotation: x: int
+            target_value = original_node.target.value
+        elif isinstance(original_node.target, cst.Attribute):
+            # Instance-level annotation: self.x: int
+            if (
+                isinstance(original_node.target.value, cst.Name)
+                and original_node.target.value.value == "self"
+            ):
+                target_value = original_node.target.attr.value
 
         # Record variable type annotation with namespace
         qualified_name = ".".join(self.current_namespace + [target_value])
