@@ -3,6 +3,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
+import click
 import libcst as cst
 from libcst.metadata import MetadataWrapper
 
@@ -13,14 +14,16 @@ from typehinter import TypeHinter
 class TypeHintEvaluator:
     """Evaluates type hint removal and addition across Python projects."""
 
-    def __init__(self, project_paths: list[str]):
+    def __init__(self, project_paths: list[str], add_type_hints: bool = True):
         """
         Initialize with list of project paths to evaluate.
 
         Args:
             project_paths: List of paths to Python projects to evaluate
+            add_type_hints: Whether to perform type hint addition step (default: True)
         """
         self.project_paths = [Path(p) for p in project_paths]
+        self.add_type_hints = add_type_hints
 
     def evaluate_projects(self):
         """Process all projects to evaluate type hint removal and addition."""
@@ -29,43 +32,50 @@ class TypeHintEvaluator:
             print("=" * 80)
 
             # Create output directories
-            removed_hints_dir = self._create_output_dir(
+            removed_hints_path = self._output_path(
                 project_path, "with_type_hints_removed"
             )
-            added_hints_dir = self._create_output_dir(project_path, "with_type_hints")
+            self._create_output_dir(project_path, removed_hints_path)
 
             # Step 1: Remove type hints and collect statistics
             print("\nStep 1: Removing and collecting original type hints...")
             original_stats = self._remove_and_collect_hints(
-                project_path, removed_hints_dir
+                project_path, removed_hints_path
             )
             self._save_stats(
-                removed_hints_dir, "original_type_hints_report.txt", original_stats
+                removed_hints_path, "original_type_hints_report.txt", original_stats
             )
 
-            # Step 2: Add type hints to the hint-free code
-            print("\nStep 2: Adding new type hints...")
-            self._add_type_hints(removed_hints_dir, added_hints_dir)
+            added_hints_path = self._output_path(project_path, "with_type_hints")
+            # Kinda jenky but this check assumes that added_hints_dir was created by a previous run
+            if self.add_type_hints:
+                # Step 2: Add type hints to the hint-free code
+                print("\nStep 2: Adding new type hints...")
+                self._create_output_dir(project_path, added_hints_path)
+                self._add_type_hints(removed_hints_path, added_hints_path)
+            else:
+                print("\nSkipping type hint addition step as requested.")
 
             # Step 3: Collect statistics on added type hints
             print("\nStep 3: Collecting statistics on added type hints...")
-            added_stats = self._collect_hint_stats(added_hints_dir)
+            added_stats = self._collect_hint_stats(added_hints_path)
             self._save_stats(
-                added_hints_dir, "added_type_hints_report.txt", added_stats
+                added_hints_path, "added_type_hints_report.txt", added_stats
             )
 
             # Compare results
             self._print_comparison(original_stats, added_stats)
 
-    def _create_output_dir(self, project_path: Path, suffix: str) -> Path:
+    def _output_path(self, project_path: Path, suffix: str) -> Path:
+        return project_path.parent / f"{project_path.name}_{suffix}"
+
+    def _create_output_dir(self, project_path: str, output_path: Path) -> Path:
         """Create and return output directory for processed files."""
-        output_dir = project_path.parent / f"{project_path.name}_{suffix}"
-        if output_dir.exists():
-            shutil.rmtree(output_dir)
+        if output_path.exists():
+            shutil.rmtree(output_path)
 
         # Copy project files to new directory
-        shutil.copytree(project_path, output_dir)
-        return output_dir
+        shutil.copytree(project_path, output_path)
 
     def _remove_and_collect_hints(self, project_path: Path, output_dir: Path) -> dict:
         """Remove type hints from project and collect statistics."""
@@ -174,12 +184,21 @@ class TypeHintEvaluator:
         )
 
 
-def main():
-    # List of projects to evaluate
-    projects = ["repos/marshmallow"]
+@click.command()
+@click.argument("projects", nargs=-1, type=str, required=True)
+@click.option(
+    "--add-type-hints/--noadd-type-hints",
+    default=True,
+    help="Whether to perform type hint addition (default: True)",
+)
+def main(projects: tuple[str, ...], add_type_hints: bool):
+    """
+    Evaluate type hints in Python projects.
 
+    PROJECTS: One or more paths to Python projects to evaluate
+    """
     # Create evaluator and run evaluation
-    evaluator = TypeHintEvaluator(projects)
+    evaluator = TypeHintEvaluator(list(projects), add_type_hints=add_type_hints)
     evaluator.evaluate_projects()
 
 
