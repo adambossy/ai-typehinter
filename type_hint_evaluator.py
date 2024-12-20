@@ -7,7 +7,7 @@ import click
 import libcst as cst
 from libcst.metadata import MetadataWrapper
 
-from type_hint_remover import TypeHintCollector, TypeHintRemover
+from type_hint_remover import TypeHintCollector, TypeHintProcessor, TypeHintRemover
 from typehinter import TypeHinter
 
 
@@ -94,13 +94,13 @@ class TypeHintEvaluator:
 
     def _remove_and_collect_hints(self, project_path: Path, output_dir: Path) -> dict:
         """Remove type hints from project and collect statistics."""
-        remover = TypeHintRemover(str(project_path), only_show_diffs=False)
+        processor = TypeHintProcessor(str(project_path), only_show_diffs=False)
 
-        # Process the entire project using TypeHintRemover
-        remover.process_project()
+        # Process the entire project
+        processor.process_project()
 
-        # Collect statistics from the remover's collector
-        collector = remover.collector
+        # Collect statistics from the processor's collector
+        collector = processor.collector
         stats = {
             "functions": len(collector.annotations["functions"]),
             "parameters": len(collector.annotations["parameters"]),

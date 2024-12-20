@@ -13,6 +13,8 @@ from utils import is_test_file
 
 
 class TypeHintCollector(cst.CSTTransformer):
+    """Collects type hints from Python source code without modifying it."""
+
     METADATA_DEPENDENCIES = (ParentNodeProvider,)
 
     def __init__(self):
@@ -59,10 +61,6 @@ class TypeHintCollector(cst.CSTTransformer):
             self.annotations["functions"][qualified_name] = original_node.returns
 
         self.current_namespace.pop()
-
-        # Remove return type annotations
-        if original_node.returns:
-            return updated_node.with_changes(returns=None)
         return updated_node
 
     def leave_Param(
@@ -77,9 +75,6 @@ class TypeHintCollector(cst.CSTTransformer):
                 self.annotations["parameters"][qualified_name] = {}
             self.annotations["parameters"][qualified_name] = original_node.annotation
 
-        # Remove parameter type annotations
-        if original_node.annotation:
-            return updated_node.with_changes(annotation=None)
         return updated_node
 
     def leave_AnnAssign(
@@ -101,29 +96,51 @@ class TypeHintCollector(cst.CSTTransformer):
         qualified_name = ".".join(self.current_namespace + [target_value])
         self.annotations["variables"][qualified_name] = original_node.annotation
 
+        return updated_node
+
+
+class TypeHintRemover(cst.CSTTransformer):
+    """Removes type hints from Python source code."""
+
+    METADATA_DEPENDENCIES = (ParentNodeProvider,)
+
+    def leave_FunctionDef(
+        self, original_node: cst.FunctionDef, updated_node: cst.FunctionDef
+    ) -> cst.FunctionDef:
+        # Remove return type annotations
+        if original_node.returns:
+            return updated_node.with_changes(returns=None)
+        return updated_node
+
+    def leave_Param(
+        self, original_node: cst.Param, updated_node: cst.Param
+    ) -> cst.Param:
+        # Remove parameter type annotations
+        if original_node.annotation:
+            return updated_node.with_changes(annotation=None)
+        return updated_node
+
+    def leave_AnnAssign(
+        self, original_node: cst.AnnAssign, updated_node: cst.AnnAssign
+    ) -> cst.Assign:
         # Convert AnnAssign to regular Assign
         return cst.Assign(
             targets=[cst.AssignTarget(target=updated_node.target)],
             value=updated_node.value or cst.Name("None"),
         )
 
-    def _get_parent_function(self, node):
-        # Use metadata to get the parent function node
-        parent = self.get_metadata(ParentNodeProvider, node)
-        while parent:
-            if isinstance(parent, cst.FunctionDef):
-                return parent.name.value
-            parent = self.get_metadata(ParentNodeProvider, parent)
-        return None
 
+class TypeHintProcessor:
+    """Processes Python files to remove type hints while preserving functionality."""
 
-class TypeHintRemover(ast.NodeTransformer):
-    """Removes type hints from Python source code while preserving functionality."""
-
-    def __init__(self, project_path: str, only_show_diffs: bool = True):
+    def __init__(
+        self, project_path: str, only_show_diffs: bool = True, use_git: bool = True
+    ):
         self.project_path = Path(project_path)
         self.only_show_diffs = only_show_diffs
-        self.repo = Repo(project_path)  # Initialize Repo instance
+        self.collector = TypeHintCollector()
+        self.remover = TypeHintRemover()
+        self.repo = Repo(project_path) if use_git else None
 
     def process_file(self, file_path: Path) -> tuple[str, str]:
         """Process a single Python file to remove type hints while preserving comments."""
@@ -137,9 +154,11 @@ class TypeHintRemover(ast.NodeTransformer):
         module = cst.parse_module(original_source)
         wrapper = cst.MetadataWrapper(module)
 
-        # Apply the transformer
-        collector = TypeHintCollector()
-        modified_module = wrapper.visit(collector)
+        # First collect type hints
+        wrapper.visit(self.collector)
+
+        # Then remove them
+        modified_module = wrapper.visit(self.remover)
 
         # Convert back to source code
         return modified_module.code
@@ -192,7 +211,10 @@ class TypeHintRemover(ast.NodeTransformer):
             f.write(processed)
 
     def _commit_changes(self) -> None:
-        """Commit changes to the git repository."""
+        """Commit changes to the git repository if git is enabled."""
+        if not self.repo:
+            return
+
         try:
             self.repo.index.add(["."])  # Stage all changes
             self.repo.index.commit("Remove type hints")  # Commit with a message
@@ -216,8 +238,8 @@ class TypeHintRemover(ast.NodeTransformer):
 )
 def cli(project_path: str, only_show_diffs: bool):
     """Remove type hints from Python projects."""
-    remover = TypeHintRemover(project_path, only_show_diffs)
-    remover.process_project()
+    processor = TypeHintProcessor(project_path, only_show_diffs)
+    processor.process_project()
 
 
 if __name__ == "__main__":
