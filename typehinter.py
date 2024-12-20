@@ -25,7 +25,8 @@ class TypeHinter:
 
         # Add file handler with default path if log file is not specified
         if log_file is None:
-            log_file = "typehinter.log"
+            now = datetime.now().strftime("%Y-%m-%d_%I:%M_%p")
+            log_file = f"logs/typehinter_{now}.log"
 
         file_handler = logging.FileHandler(log_file)
         file_handler.setLevel(logging.INFO)
