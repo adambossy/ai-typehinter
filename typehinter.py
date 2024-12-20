@@ -102,6 +102,7 @@ class TypeHinter:
         self,
         file_path: Path,
         success: bool,
+        original_source: str | None = None,
         modified_source: str | None = None,
         error_message: str | None = None,
     ) -> None:
@@ -113,6 +114,8 @@ class TypeHinter:
             "repo_sha": self.repo.head.commit.hexsha,
         }
 
+        if original_source:
+            log_entry["original_source"] = original_source
         if success and modified_source:
             log_entry["modified_source"] = modified_source
         if not success and error_message:
@@ -137,6 +140,7 @@ class TypeHinter:
                 file_path,
                 success=False,
                 error_message=error_msg,
+                original_source=function_source,
             )
             return function_source
 
@@ -182,19 +186,30 @@ Keep all existing docstrings, comments, and whitespace exactly as they appear. O
                         f"Error adding type hints to {function_name}: {result.error}"
                     )
                     self.log_type_hint_attempt(
-                        file_path, success=False, error_message=error_msg
+                        file_path,
+                        success=False,
+                        error_message=error_msg,
+                        original_source=function_source,
                     )
                     return function_source
 
                 # Log successful type hint addition
                 self.log_type_hint_attempt(
-                    file_path, success=True, modified_source=result.modified_source
+                    file_path,
+                    success=True,
+                    modified_source=result.modified_source,
+                    original_source=function_source,
                 )
                 return result.modified_source
 
         # Fallback if no tool calls or invalid response
         error_msg = f"No valid tool calls for {function_name}"
-        self.log_type_hint_attempt(file_path, success=False, error_message=error_msg)
+        self.log_type_hint_attempt(
+            file_path,
+            success=False,
+            error_message=error_msg,
+            original_source=function_source,
+        )
         return function_source
 
     def replace_lines_in_file(
