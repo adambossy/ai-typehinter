@@ -1,5 +1,6 @@
 import ast
 import os
+import subprocess
 from difflib import unified_diff
 from pathlib import Path
 
@@ -118,8 +119,9 @@ class TypeHintCollector(cst.CSTTransformer):
 class TypeHintRemover(ast.NodeTransformer):
     """Removes type hints from Python source code while preserving functionality."""
 
-    def __init__(self, project_path: str):
+    def __init__(self, project_path: str, only_show_diffs: bool = True):
         self.project_path = Path(project_path)
+        self.only_show_diffs = only_show_diffs
 
     def process_file(self, file_path: Path) -> tuple[str, str]:
         """Process a single Python file to remove type hints while preserving comments."""
@@ -154,26 +156,46 @@ class TypeHintRemover(ast.NodeTransformer):
                     try:
                         original, processed = self.process_file(file_path)
 
-                        # Only show diff if there were changes
-                        if original != processed:
-                            print(
-                                f"\nProcessing: {file_path.relative_to(self.project_path)}"
-                            )
-                            print("=" * 80)
-
-                            # Show unified diff
-                            diff = unified_diff(
-                                original.splitlines(keepends=True),
-                                processed.splitlines(keepends=True),
-                                fromfile=str(file_path),
-                                tofile=str(file_path),
-                                lineterm="",
-                            )
-                            print("".join(diff))
-                            print("=" * 80)
+                        if self.only_show_diffs:
+                            self._show_diff(file_path, original, processed)
+                        else:
+                            self._overwrite_file(file_path, processed)
 
                     except Exception as e:
                         print(f"Error processing {file_path}: {str(e)}")
+
+        if not self.only_show_diffs:
+            self._commit_changes()
+
+    def _show_diff(self, file_path: Path, original: str, processed: str) -> None:
+        """Show unified diff if there were changes."""
+        if original != processed:
+            print(f"\nProcessing: {file_path.relative_to(self.project_path)}")
+            print("=" * 80)
+
+            # Show unified diff
+            diff = unified_diff(
+                original.splitlines(keepends=True),
+                processed.splitlines(keepends=True),
+                fromfile=str(file_path),
+                tofile=str(file_path),
+                lineterm="",
+            )
+            print("".join(diff))
+            print("=" * 80)
+
+    def _overwrite_file(self, file_path: Path, processed: str) -> None:
+        """Overwrite the file with processed content."""
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(processed)
+
+    def _commit_changes(self) -> None:
+        """Commit changes to the git repository."""
+        try:
+            subprocess.run(["git", "add", "."], check=True)
+            subprocess.run(["git", "commit", "-m", "Remove type hints"], check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Error committing changes: {str(e)}")
 
 
 @click.command()
@@ -183,9 +205,16 @@ class TypeHintRemover(ast.NodeTransformer):
     required=True,
     help="Path to the Python project to remove type hints from",
 )
-def cli(project_path: str):
+@click.option(
+    "--only-show-diffs",
+    "-d",
+    is_flag=True,
+    default=True,
+    help="Only show diffs instead of overwriting files",
+)
+def cli(project_path: str, only_show_diffs: bool):
     """Remove type hints from Python projects."""
-    remover = TypeHintRemover(project_path)
+    remover = TypeHintRemover(project_path, only_show_diffs)
     remover.process_project()
 
 
