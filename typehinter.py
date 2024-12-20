@@ -5,7 +5,7 @@ from git.repo import Repo
 from langchain_anthropic import ChatAnthropic
 
 from call_graph_analyzer import CallGraphAnalyzer, FunctionNode
-from conversation import Conversation
+from conversation import Conversation, TypeHintResponse
 
 
 class TypeHinter:
@@ -13,13 +13,15 @@ class TypeHinter:
         self.project_path = Path(project_path)
         self.repo = Repo(project_path)
         self.analyzer = CallGraphAnalyzer()
-        self.conversation = Conversation(
-            ChatAnthropic(
-                model="claude-3-5-sonnet-20241022",
-                temperature=0.1,
-                max_tokens=4096,
-            )
+
+        # Create the LLM with function calling capability
+        llm = ChatAnthropic(
+            model="claude-3-5-sonnet-20241022",
+            temperature=0.1,
+            max_tokens=4096,
         )
+
+        self.conversation = Conversation(llm)
         self.auto_commit = auto_commit
 
         # Analyze the codebase upfront
@@ -114,10 +116,26 @@ Here's the function to type hint:
 
 {function_source}
 
-Return ONLY the type-hinted version of the function, nothing else.
+Use the add_type_hints tool to return the type-hinted version of the function.
 Keep all existing docstrings, comments, and whitespace exactly as they appear. Only add type hints."""
 
-        return self.conversation.completion(prompt)
+        response = self.conversation.completion(prompt)
+
+        # Extract the tool call result
+        if hasattr(response, "tool_calls") and response.tool_calls:
+            tool_call = response.tool_calls[0]
+            if isinstance(tool_call["args"], dict):
+                result = TypeHintResponse(**tool_call["args"])
+                if result.error:
+                    print(f"Error adding type hints to {function_name}: {result.error}")
+                    return function_source
+                return result.modified_source
+
+        # Fallback if no tool calls or invalid response
+        print(
+            f"Warning: No valid tool calls for {function_name}, using original source"
+        )
+        return function_source
 
     def replace_lines_in_file(
         self, file_path: Path, start_line: int, end_line: int, new_content: str

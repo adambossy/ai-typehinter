@@ -1,6 +1,5 @@
 import ast
 import os
-import subprocess
 from difflib import unified_diff
 from pathlib import Path
 

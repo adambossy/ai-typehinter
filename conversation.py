@@ -7,10 +7,40 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_community.chat_models import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.pydantic_v1 import BaseModel, Field
+from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langsmith import traceable, wrappers
 
 load_dotenv()
+
+
+class TypeHintResponse(BaseModel):
+    """Response from type hint generation."""
+
+    modified_source: str = Field(..., description="The type-hinted source code")
+    error: str = Field("", description="Error message if type hinting failed")
+
+
+@tool
+def add_type_hints(source_code: str) -> TypeHintResponse:
+    """Add type hints to Python source code.
+
+    Args:
+        source_code: The Python source code to add type hints to
+
+    Returns:
+        TypeHintResponse containing either the modified source code or an error
+    """
+    try:
+        # Return successful response
+        return TypeHintResponse(
+            modified_source=source_code,  # The LLM will replace this with type-hinted code
+            error="",
+        )
+    except Exception as e:
+        # Return error response
+        return TypeHintResponse(modified_source="", error=str(e))
 
 
 class Conversation:
@@ -28,6 +58,9 @@ class Conversation:
             self.llm = wrappers.wrap_anthropic(llm)
         else:
             self.llm = llm  # Fallback for other LLM types
+
+        # Bind the type hint tool to the LLM
+        self.llm = self.llm.bind_tools([add_type_hints])
 
         # Define the system prompt
         self.system_prompt = """You are a helpful AI assistant focused on adding type hints to Python code.
@@ -71,7 +104,7 @@ def get_user_data(username):
         )
 
         # Create chain without itemgetter
-        self.chain = self.prompt | llm
+        self.chain = self.prompt | self.llm
 
     @traceable
     def completion(self, prompt: str) -> str:
