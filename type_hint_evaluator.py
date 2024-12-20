@@ -19,6 +19,7 @@ class TypeHintEvaluator:
         project_paths: list[str],
         add_type_hints: bool = True,
         remove_type_hints: bool = True,
+        log_file: str | None = None,
     ):
         """
         Initialize with list of project paths to evaluate.
@@ -27,10 +28,12 @@ class TypeHintEvaluator:
             project_paths: List of paths to Python projects to evaluate
             add_type_hints: Whether to perform type hint addition step (default: True)
             remove_type_hints: Whether to perform type hint removal step (default: True)
+            log_file: Path to the log file
         """
         self.project_paths = [Path(p) for p in project_paths]
         self.add_type_hints = add_type_hints
         self.remove_type_hints = remove_type_hints
+        self.log_file = log_file
 
     def evaluate_projects(self):
         """Process all projects to evaluate type hint removal and addition."""
@@ -118,7 +121,7 @@ class TypeHintEvaluator:
         if output_dir.exists():
             shutil.rmtree(output_dir)
         shutil.copytree(input_dir, output_dir)
-        type_hinter = TypeHinter(output_dir, auto_commit=True)
+        type_hinter = TypeHinter(output_dir, auto_commit=True, log_file=self.log_file)
         type_hinter.process_project()
 
     def _collect_hint_stats(self, project_dir: Path) -> dict:
@@ -277,7 +280,18 @@ class TypeHintEvaluator:
     default=True,
     help="Whether to perform type hint removal (default: True)",
 )
-def main(projects: tuple[str, ...], add_type_hints: bool, remove_type_hints: bool):
+@click.option(
+    "--log-file",
+    type=click.Path(),
+    help="Path to the log file",
+    default=None,
+)
+def main(
+    projects: tuple[str, ...],
+    add_type_hints: bool,
+    remove_type_hints: bool,
+    log_file: str | None,
+):
     """
     Evaluate type hints in Python projects.
 
@@ -287,6 +301,7 @@ def main(projects: tuple[str, ...], add_type_hints: bool, remove_type_hints: boo
         list(projects),
         add_type_hints=add_type_hints,
         remove_type_hints=remove_type_hints,
+        log_file=log_file,
     )
     evaluator.evaluate_projects()
 

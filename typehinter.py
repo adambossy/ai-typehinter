@@ -1,3 +1,6 @@
+import json
+import logging
+from datetime import datetime
 from difflib import unified_diff
 from pathlib import Path
 
@@ -9,10 +12,28 @@ from conversation import Conversation, TypeHintResponse
 
 
 class TypeHinter:
-    def __init__(self, project_path: str, auto_commit: bool = False):
+    def __init__(
+        self, project_path: str, log_file: str | None = None, auto_commit: bool = False
+    ):
         self.project_path = Path(project_path)
         self.repo = Repo(project_path)
         self.analyzer = CallGraphAnalyzer()
+
+        # Setup logging
+        self.logger = logging.getLogger("typehinter")
+        self.logger.setLevel(logging.INFO)
+
+        # Add file handler with default path if log file is not specified
+        if log_file is None:
+            log_file = "typehinter.log"
+
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.INFO)
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        file_handler.setFormatter(formatter)
+        self.logger.addHandler(file_handler)
 
         # Create the LLM with function calling capability
         llm = ChatAnthropic(
@@ -76,6 +97,28 @@ class TypeHinter:
         ]
         return self.normalize_indentation(function_lines)
 
+    def log_type_hint_attempt(
+        self,
+        file_path: Path,
+        success: bool,
+        modified_source: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        """Log information about a type hint attempt."""
+        log_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "file_path": str(file_path),
+            "success": success,
+            "repo_sha": self.repo.head.commit.hexsha,
+        }
+
+        if success and modified_source:
+            log_entry["modified_source"] = modified_source
+        if not success and error_message:
+            log_entry["error_message"] = error_message
+
+        self.logger.info(json.dumps(log_entry))
+
     def get_type_hints(
         self, function_source: str, file_path: Path, function_name: str
     ) -> str:
@@ -87,6 +130,13 @@ class TypeHinter:
                 break
 
         if not function_node:
+            error_msg = f"Function node not found for {function_name}"
+            self.logger.info(f"Type hint attempt failed: {error_msg}")
+            self.log_type_hint_attempt(
+                file_path,
+                success=False,
+                error_message=error_msg,
+            )
             return function_source
 
         # Build context about related functions
@@ -127,14 +177,23 @@ Keep all existing docstrings, comments, and whitespace exactly as they appear. O
             if isinstance(tool_call["args"], dict):
                 result = TypeHintResponse(**tool_call["args"])
                 if result.error:
-                    print(f"Error adding type hints to {function_name}: {result.error}")
+                    error_msg = (
+                        f"Error adding type hints to {function_name}: {result.error}"
+                    )
+                    self.log_type_hint_attempt(
+                        file_path, success=False, error_message=error_msg
+                    )
                     return function_source
+
+                # Log successful type hint addition
+                self.log_type_hint_attempt(
+                    file_path, success=True, modified_source=result.modified_source
+                )
                 return result.modified_source
 
         # Fallback if no tool calls or invalid response
-        print(
-            f"Warning: No valid tool calls for {function_name}, using original source"
-        )
+        error_msg = f"No valid tool calls for {function_name}"
+        self.log_type_hint_attempt(file_path, success=False, error_message=error_msg)
         return function_source
 
     def replace_lines_in_file(
