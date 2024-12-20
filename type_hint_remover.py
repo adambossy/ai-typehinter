@@ -6,6 +6,7 @@ from pathlib import Path
 
 import click
 import libcst as cst
+from git import Repo
 from libcst.metadata import ParentNodeProvider
 
 from utils import is_test_file
@@ -122,6 +123,7 @@ class TypeHintRemover(ast.NodeTransformer):
     def __init__(self, project_path: str, only_show_diffs: bool = True):
         self.project_path = Path(project_path)
         self.only_show_diffs = only_show_diffs
+        self.repo = Repo(project_path)  # Initialize Repo instance
 
     def process_file(self, file_path: Path) -> tuple[str, str]:
         """Process a single Python file to remove type hints while preserving comments."""
@@ -192,9 +194,9 @@ class TypeHintRemover(ast.NodeTransformer):
     def _commit_changes(self) -> None:
         """Commit changes to the git repository."""
         try:
-            subprocess.run(["git", "add", "."], check=True)
-            subprocess.run(["git", "commit", "-m", "Remove type hints"], check=True)
-        except subprocess.CalledProcessError as e:
+            self.repo.index.add(["."])  # Stage all changes
+            self.repo.index.commit("Remove type hints")  # Commit with a message
+        except Exception as e:
             print(f"Error committing changes: {str(e)}")
 
 
