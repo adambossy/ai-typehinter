@@ -70,16 +70,18 @@ class TypeHintEvaluator:
             else:
                 print("\nSkipping type hint addition step as requested.")
 
-            # Step 3: Collect statistics on added type hints
-            print("\nStep 3: Collecting statistics on added type hints...")
+            # Step 3: Collect statistics and compare
+            print("\nStep 3: Collecting and comparing type hints...")
             added_stats = self._collect_hint_stats(added_hints_path)
             self._save_stats(
                 added_hints_path, "added_type_hints_report.txt", added_stats
             )
 
-            # Compare results only if we have both original and added stats
+            # Compare results
             if original_stats:
                 self._print_comparison(original_stats, added_stats)
+                # Add detailed comparison
+                self._compare_type_hints(project_path, added_hints_path)
 
     def _output_path(self, project_path: Path, suffix: str) -> Path:
         return project_path.parent / f"{project_path.name}_{suffix}"
@@ -128,20 +130,20 @@ class TypeHintEvaluator:
             for file in files:
                 if file.endswith(".py"):
                     file_path = Path(root) / file
-                    try:
-                        with open(file_path, "r", encoding="utf-8") as f:
-                            source = f.read()
 
-                        module = cst.parse_module(source)
-                        wrapper = MetadataWrapper(module)
-                        wrapper.visit(collector)
+                    print(f"Collecting type hints from {file_path}")
 
-                        stats["functions"] += len(collector.annotations["functions"])
-                        stats["parameters"] += len(collector.annotations["parameters"])
-                        stats["variables"] += len(collector.annotations["variables"])
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        source = f.read()
 
-                    except Exception as e:
-                        print(f"Error collecting stats from {file_path}: {str(e)}")
+                    source = self.preprocess_source(source)
+                    module = cst.parse_module(source)
+                    wrapper = MetadataWrapper(module)
+                    wrapper.visit(collector)
+
+                    stats["functions"] += len(collector.annotations["functions"])
+                    stats["parameters"] += len(collector.annotations["parameters"])
+                    stats["variables"] += len(collector.annotations["variables"])
 
         return stats
 
@@ -176,6 +178,91 @@ class TypeHintEvaluator:
         print(
             f"{'Total':<20} {orig_total:<10} {added_total:<10} {added_total - orig_total:+d}"
         )
+
+    def _collect_detailed_hint_stats(self, project_dir: Path) -> dict:
+        """Collect detailed statistics about type hints in the project, including the actual annotations."""
+        collector = TypeHintCollector()
+
+        for root, _, files in os.walk(project_dir):
+            for file in files:
+                if file.endswith(".py"):
+                    file_path = Path(root) / file
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            source = f.read()
+
+                        source = self.preprocess_source(source)
+                        module = cst.parse_module(source)
+                        wrapper = MetadataWrapper(module)
+                        wrapper.visit(collector)
+
+                    except Exception as e:
+                        print(f"Error collecting stats from {file_path}: {str(e)}")
+
+        return collector.annotations
+
+    def _compare_type_hints(self, original_path: Path, added_path: Path):
+        """Compare type hints between original and processed versions in detail."""
+        print("\nDetailed Type Hint Comparison:")
+        print("=" * 80)
+
+        # Collect detailed annotations from both versions
+        original_hints = self._collect_detailed_hint_stats(original_path)
+        added_hints = self._collect_detailed_hint_stats(added_path)
+
+        categories = ["functions", "parameters", "variables"]
+
+        for category in categories:
+            print(f"\n{category.title()} Type Hints:")
+            print("-" * 80)
+
+            original_set = set(original_hints[category].keys())
+            added_set = set(added_hints[category].keys())
+
+            # Find items in both, only in original, and only in added
+            common = original_set & added_set
+            only_original = original_set - added_set
+            only_added = added_set - original_set
+
+            # Print items that appear in both versions
+            if common:
+                print("\nPresent in both versions:")
+                for name in sorted(common):
+                    original_type = original_hints[category][name]
+                    added_type = added_hints[category][name]
+                    if str(original_type) != str(added_type):
+                        print(f"  {name}:")
+                        print(f"    Original: {original_type}")
+                        print(f"    Added:    {added_type}")
+                    else:
+                        print(f"  {name}: {original_type} (unchanged)")
+
+            # Print items only in original
+            if only_original:
+                print("\nOnly in original:")
+                for name in sorted(only_original):
+                    print(f"  {name}: {original_hints[category][name]}")
+
+            # Print items only in added
+            if only_added:
+                print("\nOnly in added:")
+                for name in sorted(only_added):
+                    print(f"  {name}: {added_hints[category][name]}")
+
+            # Print summary
+            print(f"\nSummary for {category}:")
+            print(f"  Total in original: {len(original_set)}")
+            print(f"  Total in added: {len(added_set)}")
+            print(f"  Common: {len(common)}")
+            print(f"  Only in original: {len(only_original)}")
+            print(f"  Only in added: {len(only_added)}")
+
+    def preprocess_source(self, source: str) -> str:
+        if source.startswith('"""'):
+            end_index = source.find('"""', 3)
+            if end_index != -1:
+                return source[end_index + 3 :]
+        return source
 
 
 @click.command()
