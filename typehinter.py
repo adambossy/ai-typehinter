@@ -236,5 +236,6 @@ Keep all existing docstrings, comments, and whitespace exactly as they appear. O
                     file_path, type_hinted_source, base_indent, function_node
                 )
                 self.commit_changes(file_path, function_node.name)
+                print(f"Added type hints to {function_node.name} in {file_path}")
             else:
                 print(f"Skipping changes to {function_node.name} in {file_path}")

@@ -14,16 +14,23 @@ from typehinter import TypeHinter
 class TypeHintEvaluator:
     """Evaluates type hint removal and addition across Python projects."""
 
-    def __init__(self, project_paths: list[str], add_type_hints: bool = True):
+    def __init__(
+        self,
+        project_paths: list[str],
+        add_type_hints: bool = True,
+        remove_type_hints: bool = True,
+    ):
         """
         Initialize with list of project paths to evaluate.
 
         Args:
             project_paths: List of paths to Python projects to evaluate
             add_type_hints: Whether to perform type hint addition step (default: True)
+            remove_type_hints: Whether to perform type hint removal step (default: True)
         """
         self.project_paths = [Path(p) for p in project_paths]
         self.add_type_hints = add_type_hints
+        self.remove_type_hints = remove_type_hints
 
     def evaluate_projects(self):
         """Process all projects to evaluate type hint removal and addition."""
@@ -31,25 +38,32 @@ class TypeHintEvaluator:
             print(f"\nEvaluating project: {project_path}")
             print("=" * 80)
 
-            # Create output directories
             removed_hints_path = self._output_path(
                 project_path, "with_type_hints_removed"
             )
-            self._create_output_dir(project_path, removed_hints_path)
-
-            # Step 1: Remove type hints and collect statistics
-            print("\nStep 1: Removing and collecting original type hints...")
-            original_stats = self._remove_and_collect_hints(
-                project_path, removed_hints_path
-            )
-            self._save_stats(
-                removed_hints_path, "original_type_hints_report.txt", original_stats
-            )
-
             added_hints_path = self._output_path(project_path, "with_type_hints")
-            # Kinda jenky but this check assumes that added_hints_dir was created by a previous run
+
+            original_stats = {}
+            if self.remove_type_hints:
+                # Create output directory and remove type hints
+                self._create_output_dir(project_path, removed_hints_path)
+                print("\nStep 1: Removing and collecting original type hints...")
+                original_stats = self._remove_and_collect_hints(
+                    project_path, removed_hints_path
+                )
+                self._save_stats(
+                    removed_hints_path, "original_type_hints_report.txt", original_stats
+                )
+            else:
+                print("\nSkipping type hint removal step as requested.")
+                # If we're not removing type hints, use the existing directory
+                if not removed_hints_path.exists():
+                    print(
+                        f"Error: Directory {removed_hints_path} not found. Must run with type hint removal first."
+                    )
+                    return
+
             if self.add_type_hints:
-                # Step 2: Add type hints to the hint-free code
                 print("\nStep 2: Adding new type hints...")
                 self._create_output_dir(project_path, added_hints_path)
                 self._add_type_hints(removed_hints_path, added_hints_path)
@@ -63,8 +77,9 @@ class TypeHintEvaluator:
                 added_hints_path, "added_type_hints_report.txt", added_stats
             )
 
-            # Compare results
-            self._print_comparison(original_stats, added_stats)
+            # Compare results only if we have both original and added stats
+            if original_stats:
+                self._print_comparison(original_stats, added_stats)
 
     def _output_path(self, project_path: Path, suffix: str) -> Path:
         return project_path.parent / f"{project_path.name}_{suffix}"
@@ -191,14 +206,22 @@ class TypeHintEvaluator:
     default=True,
     help="Whether to perform type hint addition (default: True)",
 )
-def main(projects: tuple[str, ...], add_type_hints: bool):
+@click.option(
+    "--remove-type-hints/--noremove-type-hints",
+    default=True,
+    help="Whether to perform type hint removal (default: True)",
+)
+def main(projects: tuple[str, ...], add_type_hints: bool, remove_type_hints: bool):
     """
     Evaluate type hints in Python projects.
 
     PROJECTS: One or more paths to Python projects to evaluate
     """
-    # Create evaluator and run evaluation
-    evaluator = TypeHintEvaluator(list(projects), add_type_hints=add_type_hints)
+    evaluator = TypeHintEvaluator(
+        list(projects),
+        add_type_hints=add_type_hints,
+        remove_type_hints=remove_type_hints,
+    )
     evaluator.evaluate_projects()
 
 
