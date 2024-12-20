@@ -305,30 +305,48 @@ Keep all existing docstrings, comments, and whitespace exactly as they appear. O
             print("Please answer 'yes', 'no', or 'quit'")
 
     def process_project(self) -> None:
-        """Process the entire project and add type hints to all functions."""
+        """Process the entire project and add type hints to all functions.
+
+        Processes one file at a time, working from the bottom up to avoid
+        line number changes affecting subsequent functions.
+        """
         walker = self.analyzer.get_walker()
 
+        # Group functions by filename
+        files_to_functions: dict[Path, list[FunctionNode]] = {}
         for function_node in walker:
             file_path = Path(function_node.filename)
+            if file_path not in files_to_functions:
+                files_to_functions[file_path] = []
+            files_to_functions[file_path].append(function_node)
 
-            original_source, base_indent = self.get_function_source(
-                file_path, function_node
-            )
-            type_hinted_source = self.get_type_hints(
-                original_source, file_path, function_node.name
-            )
+        # Process each file
+        for file_path, functions in files_to_functions.items():
+            # Sort functions by line number in reverse order
+            functions.sort(key=lambda x: x.lineno, reverse=True)
 
-            if not type_hinted_source:
-                continue
+            print(f"\nProcessing file: {file_path}")
 
-            # Show diff and get confirmation
-            if self.auto_commit or self.show_diff_and_confirm(
-                file_path, original_source, type_hinted_source
-            ):
-                self.update_file_with_type_hints(
-                    file_path, type_hinted_source, base_indent, function_node
+            # Process each function in the file from bottom to top
+            for function_node in functions:
+                original_source, base_indent = self.get_function_source(
+                    file_path, function_node
                 )
-                self.commit_changes(file_path, function_node.name)
-                print(f"Added type hints to {function_node.name} in {file_path}")
-            else:
-                print(f"Skipping changes to {function_node.name} in {file_path}")
+                type_hinted_source = self.get_type_hints(
+                    original_source, file_path, function_node.name
+                )
+
+                if not type_hinted_source:
+                    continue
+
+                # Show diff and get confirmation
+                if self.auto_commit or self.show_diff_and_confirm(
+                    file_path, original_source, type_hinted_source
+                ):
+                    self.update_file_with_type_hints(
+                        file_path, type_hinted_source, base_indent, function_node
+                    )
+                    self.commit_changes(file_path, function_node.name)
+                    print(f"Added type hints to {function_node.name} in {file_path}")
+                else:
+                    print(f"Skipping changes to {function_node.name} in {file_path}")
