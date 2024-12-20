@@ -94,39 +94,18 @@ class TypeHintEvaluator:
 
     def _remove_and_collect_hints(self, project_path: Path, output_dir: Path) -> dict:
         """Remove type hints from project and collect statistics."""
-        remover = TypeHintRemover(str(project_path))
-        collector = TypeHintCollector()
-        stats = {"functions": 0, "parameters": 0, "variables": 0}
+        remover = TypeHintRemover(str(project_path), only_show_diffs=False)
 
-        # Process each Python file
-        for root, _, files in os.walk(project_path):
-            for file in files:
-                if file.endswith(".py"):
-                    file_path = Path(root) / file
-                    relative_path = file_path.relative_to(project_path)
-                    output_file = output_dir / relative_path
+        # Process the entire project using TypeHintRemover
+        remover.process_project()
 
-                    try:
-                        # Parse and process the file
-                        with open(file_path, "r", encoding="utf-8") as f:
-                            source = f.read()
-
-                        module = cst.parse_module(source)
-                        wrapper = MetadataWrapper(module)
-                        modified_module = wrapper.visit(collector)
-
-                        # Write modified code to output directory
-                        output_file.parent.mkdir(parents=True, exist_ok=True)
-                        with open(output_file, "w", encoding="utf-8") as f:
-                            f.write(modified_module.code)
-
-                        # Update statistics
-                        stats["functions"] += len(collector.annotations["functions"])
-                        stats["parameters"] += len(collector.annotations["parameters"])
-                        stats["variables"] += len(collector.annotations["variables"])
-
-                    except Exception as e:
-                        print(f"Error processing {file_path}: {str(e)}")
+        # Collect statistics from the remover's collector
+        collector = remover.collector
+        stats = {
+            "functions": len(collector.annotations["functions"]),
+            "parameters": len(collector.annotations["parameters"]),
+            "variables": len(collector.annotations["variables"]),
+        }
 
         return stats
 
