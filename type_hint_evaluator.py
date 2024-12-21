@@ -44,16 +44,12 @@ class TypeHintEvaluator:
             removed_hints_path = self._output_path(
                 project_path, "with_type_hints_removed"
             )
-            added_hints_path = self._output_path(project_path, "with_type_hints")
 
             original_stats = {}
             if self.remove_type_hints:
-                # Create output directory and remove type hints
-                self._create_output_dir(project_path, removed_hints_path)
                 print("\nStep 1: Removing and collecting original type hints...")
-                original_stats = self._remove_and_collect_hints(
-                    project_path, removed_hints_path
-                )
+                self._copy_project(project_path, removed_hints_path)
+                original_stats = self._remove_and_collect_hints(removed_hints_path)
                 self._save_stats(
                     removed_hints_path, "original_type_hints_report.txt", original_stats
                 )
@@ -89,7 +85,7 @@ class TypeHintEvaluator:
     def _output_path(self, project_path: Path, suffix: str) -> Path:
         return project_path.parent / f"{project_path.name}_{suffix}"
 
-    def _create_output_dir(self, project_path: str, output_path: Path) -> Path:
+    def _copy_project(self, project_path: str, output_path: Path) -> Path:
         """Create and return output directory for processed files."""
         if output_path.exists():
             shutil.rmtree(output_path)
@@ -97,7 +93,7 @@ class TypeHintEvaluator:
         # Copy project files to new directory
         shutil.copytree(project_path, output_path)
 
-    def _remove_and_collect_hints(self, project_path: Path, output_dir: Path) -> dict:
+    def _remove_and_collect_hints(self, project_path: Path) -> dict:
         """Remove type hints from project and collect statistics."""
         processor = TypeHintProcessor(str(project_path), only_show_diffs=False)
 
@@ -114,14 +110,11 @@ class TypeHintEvaluator:
 
         return stats
 
-    def _add_type_hints(self, input_dir: Path, output_dir: Path):
+    def _add_type_hints(self, input_dir: Path):
         """Add type hints to the code (placeholder for future implementation)."""
         # TODO: Implement type hint addition logic
         # For now, just copy files to maintain the structure
-        if output_dir.exists():
-            shutil.rmtree(output_dir)
-        shutil.copytree(input_dir, output_dir)
-        type_hinter = TypeHinter(output_dir, auto_commit=True, log_file=self.log_file)
+        type_hinter = TypeHinter(input_dir, auto_commit=True, log_file=self.log_file)
         type_hinter.process_project()
 
     def _collect_hint_stats(self, project_dir: Path) -> dict:

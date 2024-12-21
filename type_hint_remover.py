@@ -6,6 +6,7 @@ from pathlib import Path
 import click
 import libcst as cst
 from git import Repo
+from git.exc import InvalidGitRepositoryError
 from libcst.metadata import ParentNodeProvider
 
 from utils import is_test_file
@@ -139,7 +140,12 @@ class TypeHintProcessor:
         self.only_show_diffs = only_show_diffs
         self.collector = TypeHintCollector()
         self.remover = TypeHintRemover()
-        self.repo = Repo(project_path) if use_git else None
+
+        try:
+            self.repo = Repo(project_path) if use_git else None
+        except InvalidGitRepositoryError:
+            print("Git repo for this project does not exist. Please initialize.")
+            exit(1)  # End the program with a non-zero exit code
 
     def process_file(self, file_path: Path) -> tuple[str, str]:
         """Process a single Python file to remove type hints while preserving comments."""
@@ -176,6 +182,8 @@ class TypeHintProcessor:
                     try:
                         original, processed = self.process_file(file_path)
 
+                        print("Processing removal and collection for file: ", file_path)
+
                         if self.only_show_diffs:
                             self._show_diff(file_path, original, processed)
                         else:
@@ -185,6 +193,7 @@ class TypeHintProcessor:
                         print(f"Error processing {file_path}: {str(e)}")
 
         if not self.only_show_diffs:
+            print("Committing type hint removal...")
             self._commit_changes()
 
     def _show_diff(self, file_path: Path, original: str, processed: str) -> None:
@@ -215,8 +224,9 @@ class TypeHintProcessor:
             return
 
         try:
-            self.repo.index.add(["."])  # Stage all changes
-            self.repo.index.commit("Remove type hints")  # Commit with a message
+            # Stage all changes in the project path, excluding the .git directory
+            self.repo.git.add(all=True)
+            self.repo.git.commit(m="Remove type hints")  # Commit with a message
         except Exception as e:
             print(f"Error committing changes: {str(e)}")
 
