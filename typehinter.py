@@ -8,7 +8,7 @@ from git.repo import Repo
 from langchain_anthropic import ChatAnthropic
 
 from call_graph_analyzer import CallGraphAnalyzer, FunctionNode
-from conversation import Conversation, TypeHintResponse
+from conversation import Conversation, add_type_hints
 
 
 class TypeHinter:
@@ -176,31 +176,25 @@ Keep all existing docstrings, comments, and whitespace exactly as they appear. O
 
         response = self.conversation.completion(prompt)
 
-        # Extract the tool call result
-        if hasattr(response, "tool_calls") and response.tool_calls:
-            tool_call = response.tool_calls[0]
-            if isinstance(tool_call["args"], dict):
-                result = TypeHintResponse(**tool_call["args"])
-                if result.error:
-                    error_msg = (
-                        f"Error adding type hints to {function_name}: {result.error}"
-                    )
-                    self.log_type_hint_attempt(
-                        file_path,
-                        success=False,
-                        error_message=error_msg,
-                        original_source=function_source,
-                    )
-                    return function_source
+        if response.get("error"):
+            error_msg = f"Error adding type hints to {function_name}: {result.error}"
+            self.log_type_hint_attempt(
+                file_path,
+                success=False,
+                error_message=error_msg,
+                original_source=function_source,
+            )
+            return function_source
 
-                # Log successful type hint addition
-                self.log_type_hint_attempt(
-                    file_path,
-                    success=True,
-                    modified_source=result.modified_source,
-                    original_source=function_source,
-                )
-                return result.modified_source
+        modified_source = response.get("modified_source")
+        if modified_source:
+            self.log_type_hint_attempt(
+                file_path,
+                success=True,
+                modified_source=modified_source,
+                original_source=function_source,
+            )
+            return modified_source
 
         # Fallback if no tool calls or invalid response
         error_msg = f"No valid tool calls for {function_name}"
@@ -210,7 +204,8 @@ Keep all existing docstrings, comments, and whitespace exactly as they appear. O
             error_message=error_msg,
             original_source=function_source,
         )
-        return function_source
+
+        return None
 
     def replace_lines_in_file(
         self, file_path: Path, start_line: int, end_line: int, new_content: str
@@ -337,6 +332,9 @@ Keep all existing docstrings, comments, and whitespace exactly as they appear. O
                 )
 
                 if not type_hinted_source:
+                    print(
+                        f"Error adding type hints to {function_node.name} in {file_path}"
+                    )
                     continue
 
                 # Show diff and get confirmation

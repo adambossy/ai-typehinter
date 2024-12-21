@@ -62,10 +62,11 @@ class TypeHintEvaluator:
                     )
                     return
 
+            added_hints_path = self._output_path(project_path, "with_type_hints")
             if self.add_type_hints:
                 print("\nStep 2: Adding new type hints...")
-                self._create_output_dir(project_path, added_hints_path)
-                self._add_type_hints(removed_hints_path, added_hints_path)
+                self._copy_project(removed_hints_path, added_hints_path)
+                self._add_type_hints(added_hints_path)
             else:
                 print("\nSkipping type hint addition step as requested.")
 
