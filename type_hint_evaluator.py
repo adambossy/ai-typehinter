@@ -233,9 +233,13 @@ class TypeHintEvaluator:
             if common:
                 print("\nPresent in both versions:")
                 for name in sorted(common):
-                    original_type = original_hints[category][name]
-                    added_type = added_hints[category][name]
-                    if str(original_type) != str(added_type):
+                    original_type = self._get_annotation_string(
+                        original_hints[category][name]
+                    )
+                    added_type = self._get_annotation_string(
+                        added_hints[category][name]
+                    )
+                    if original_type != added_type:
                         print(f"  {name}:")
                         print(f"    Original: {original_type}")
                         print(f"    Added:    {added_type}")
@@ -246,13 +250,19 @@ class TypeHintEvaluator:
             if only_original:
                 print("\nOnly in original:")
                 for name in sorted(only_original):
-                    print(f"  {name}: {original_hints[category][name]}")
+                    annotation_str = self._get_annotation_string(
+                        original_hints[category][name]
+                    )
+                    print(f"  {name}: {annotation_str}")
 
             # Print items only in added
             if only_added:
                 print("\nOnly in added:")
                 for name in sorted(only_added):
-                    print(f"  {name}: {added_hints[category][name]}")
+                    annotation_str = self._get_annotation_string(
+                        added_hints[category][name]
+                    )
+                    print(f"  {name}: {annotation_str}")
 
             # Print summary
             print(f"\nSummary for {category}:")
@@ -261,6 +271,21 @@ class TypeHintEvaluator:
             print(f"  Common: {len(common)}")
             print(f"  Only in original: {len(only_original)}")
             print(f"  Only in added: {len(only_added)}")
+
+    def _get_annotation_string(self, annotation) -> str:
+        """Recursively get the string representation of an annotation."""
+        if isinstance(annotation, cst.Annotation):
+            return self._get_annotation_string(annotation.annotation)
+        elif isinstance(annotation, cst.Name):
+            return annotation.value
+        elif isinstance(annotation, cst.Subscript):
+            value = self._get_annotation_string(annotation.value)
+            slices = ", ".join(
+                self._get_annotation_string(e.slice.value) for e in annotation.slice
+            )
+            return f"{value}[{slices}]"
+        else:
+            return str(annotation)
 
     def preprocess_source(self, source: str) -> str:
         if source.startswith('"""'):
