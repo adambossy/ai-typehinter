@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from pathlib import Path
 
 import libcst as cst
 from libcst._exceptions import ParserSyntaxError
@@ -260,6 +261,7 @@ class TestTypeHintCollection(unittest.TestCase):
         code = code.strip()
         module = cst.parse_module(code)
         wrapper = MetadataWrapper(module)
+        self.collector.set_module_name(Path("test_module.py"))
         modified_module = wrapper.visit(self.collector)
         return modified_module.code
 
@@ -288,8 +290,8 @@ class TestTypeHintCollection(unittest.TestCase):
         self.process_code(original)
         annotations = self.collector.annotations
         assert len(annotations["variables"]) == 1
-        assert "<module>.x" in annotations["variables"]
-        assert self.var_annotation(annotations, "<module>.x") == "int"
+        assert "test_module.x" in annotations["variables"]
+        assert self.var_annotation(annotations, "test_module.x") == "int"
 
     def test_function_no_type_hints(self):
         """Test that function without type hints collects nothing."""
@@ -309,8 +311,8 @@ def foo(bar: int):
         self.process_code(original)
         annotations = self.collector.annotations
         assert len(annotations["parameters"]) == 1
-        assert "<module>.foo.bar" in annotations["parameters"]
-        assert self.param_annotation(annotations, "<module>.foo.bar") == "int"
+        assert "test_module.foo.bar" in annotations["parameters"]
+        assert self.param_annotation(annotations, "test_module.foo.bar") == "int"
 
     def test_function_param_and_return_type_hints(self):
         """Test that function with parameter and return type hints collects both types."""
@@ -320,11 +322,11 @@ def foo(bar: int) -> int:
         self.process_code(original)
         annotations = self.collector.annotations
         assert len(annotations["functions"]) == 1
-        assert "<module>.foo" in annotations["functions"]
-        assert self.func_annotation(annotations, "<module>.foo") == "int"
+        assert "test_module.foo" in annotations["functions"]
+        assert self.func_annotation(annotations, "test_module.foo") == "int"
         assert len(annotations["parameters"]) == 1
-        assert "<module>.foo.bar" in annotations["parameters"]
-        assert self.param_annotation(annotations, "<module>.foo.bar") == "int"
+        assert "test_module.foo.bar" in annotations["parameters"]
+        assert self.param_annotation(annotations, "test_module.foo.bar") == "int"
 
     def test_class_no_type_hints(self):
         """Test that class without type hints collects nothing."""
@@ -347,8 +349,10 @@ class Foo:
         self.process_code(original)
         annotations = self.collector.annotations
         assert len(annotations["parameters"]) == 1
-        assert "<module>.Foo.__init__.z" in annotations["parameters"]
-        assert self.param_annotation(annotations, "<module>.Foo.__init__.z") == "float"
+        assert "test_module.Foo.__init__.z" in annotations["parameters"]
+        assert (
+            self.param_annotation(annotations, "test_module.Foo.__init__.z") == "float"
+        )
 
     def test_class_init_with_return_type(self):
         """Test that class __init__ with return type annotation collects the type."""
@@ -359,11 +363,13 @@ class Foo:
         self.process_code(original)
         annotations = self.collector.annotations
         assert len(annotations["functions"]) == 1
-        assert "<module>.Foo.__init__" in annotations["functions"]
-        assert self.func_annotation(annotations, "<module>.Foo.__init__") == "None"
+        assert "test_module.Foo.__init__" in annotations["functions"]
+        assert self.func_annotation(annotations, "test_module.Foo.__init__") == "None"
         assert len(annotations["parameters"]) == 1
-        assert "<module>.Foo.__init__.z" in annotations["parameters"]
-        assert self.param_annotation(annotations, "<module>.Foo.__init__.z") == "float"
+        assert "test_module.Foo.__init__.z" in annotations["parameters"]
+        assert (
+            self.param_annotation(annotations, "test_module.Foo.__init__.z") == "float"
+        )
 
     def test_class_init_with_assignment(self):
         """Test that class __init__ with type hints and assignment collects all types."""
@@ -374,14 +380,16 @@ class Foo:
         self.process_code(original)
         annotations = self.collector.annotations
         assert len(annotations["functions"]) == 1
-        assert "<module>.Foo.__init__" in annotations["functions"]
-        assert self.func_annotation(annotations, "<module>.Foo.__init__") == "None"
+        assert "test_module.Foo.__init__" in annotations["functions"]
+        assert self.func_annotation(annotations, "test_module.Foo.__init__") == "None"
         assert len(annotations["parameters"]) == 1
-        assert "<module>.Foo.__init__.z" in annotations["parameters"]
-        assert self.param_annotation(annotations, "<module>.Foo.__init__.z") == "float"
+        assert "test_module.Foo.__init__.z" in annotations["parameters"]
+        assert (
+            self.param_annotation(annotations, "test_module.Foo.__init__.z") == "float"
+        )
         assert len(annotations["variables"]) == 1
-        assert "<module>.Foo.__init__.z" in annotations["variables"]
-        assert self.var_annotation(annotations, "<module>.Foo.__init__.z") == "float"
+        assert "test_module.Foo.__init__.z" in annotations["variables"]
+        assert self.var_annotation(annotations, "test_module.Foo.__init__.z") == "float"
 
     def test_class_init_with_two_assignments(self):
         """Test that class __init__ with type hints collects all types."""
@@ -393,18 +401,20 @@ class Foo:
         self.process_code(original)
         annotations = self.collector.annotations
         assert len(annotations["functions"]) == 1
-        assert "<module>.Foo.__init__" in annotations["functions"]
-        assert self.func_annotation(annotations, "<module>.Foo.__init__") == "None"
+        assert "test_module.Foo.__init__" in annotations["functions"]
+        assert self.func_annotation(annotations, "test_module.Foo.__init__") == "None"
         assert len(annotations["parameters"]) == 2
-        assert "<module>.Foo.__init__.y" in annotations["parameters"]
-        assert self.param_annotation(annotations, "<module>.Foo.__init__.y") == "str"
-        assert "<module>.Foo.__init__.z" in annotations["parameters"]
-        assert self.param_annotation(annotations, "<module>.Foo.__init__.z") == "float"
+        assert "test_module.Foo.__init__.y" in annotations["parameters"]
+        assert self.param_annotation(annotations, "test_module.Foo.__init__.y") == "str"
+        assert "test_module.Foo.__init__.z" in annotations["parameters"]
+        assert (
+            self.param_annotation(annotations, "test_module.Foo.__init__.z") == "float"
+        )
         assert len(annotations["variables"]) == 2
-        assert "<module>.Foo.__init__.y" in annotations["variables"]
-        assert self.var_annotation(annotations, "<module>.Foo.__init__.y") == "str"
-        assert "<module>.Foo.__init__.z" in annotations["variables"]
-        assert self.var_annotation(annotations, "<module>.Foo.__init__.z") == "float"
+        assert "test_module.Foo.__init__.y" in annotations["variables"]
+        assert self.var_annotation(annotations, "test_module.Foo.__init__.y") == "str"
+        assert "test_module.Foo.__init__.z" in annotations["variables"]
+        assert self.var_annotation(annotations, "test_module.Foo.__init__.z") == "float"
 
     def tearDown(self):
         """Clean up after each test."""
@@ -463,7 +473,9 @@ def process_data(data):
 
         input_code = input_code.strip()
 
-        result = self.processor.process_file_contents(input_code)
+        result = self.processor.process_file_contents(
+            input_code, Path("test_module.py")
+        )
 
         result = result.strip()
         expected_output = expected_output.strip()

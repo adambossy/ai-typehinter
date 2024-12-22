@@ -136,6 +136,7 @@ class TypeHintEvaluator:
                     source = self.preprocess_source(source)
                     module = cst.parse_module(source)
                     wrapper = MetadataWrapper(module)
+                    collector.set_module_name(file_path)
                     wrapper.visit(collector)
 
                     stats["functions"] += len(collector.annotations["functions"])
@@ -191,6 +192,7 @@ class TypeHintEvaluator:
                         source = self.preprocess_source(source)
                         module = cst.parse_module(source)
                         wrapper = MetadataWrapper(module)
+                        collector.set_module_name(file_path)
                         wrapper.visit(collector)
 
                     except Exception as e:

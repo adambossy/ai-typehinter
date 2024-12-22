@@ -28,16 +28,6 @@ class TypeHintCollector(cst.CSTTransformer):
         self.module_name = None
 
     def visit_Module(self, node: cst.Module) -> None:
-        # Get module name from first statement if it's a docstring
-        if (
-            node.body
-            and isinstance(node.body[0], cst.SimpleStatementLine)
-            and isinstance(node.body[0].body[0], cst.Expr)
-            and isinstance(node.body[0].body[0].value, cst.SimpleString)
-        ):
-            self.module_name = node.body[0].body[0].value.value.strip("\"' ")
-        else:
-            self.module_name = "<module>"
         self.current_namespace = [self.module_name]
 
     def visit_ClassDef(self, node: cst.ClassDef) -> None:
@@ -98,6 +88,10 @@ class TypeHintCollector(cst.CSTTransformer):
 
         return updated_node
 
+    def set_module_name(self, file_path: Path) -> None:
+        """Set module name from file path without extension."""
+        self.module_name = file_path.name.split(".")[0]
+
 
 class TypeHintRemover(cst.CSTTransformer):
     """Removes type hints from Python source code."""
@@ -153,13 +147,15 @@ class TypeHintProcessor:
         with open(file_path, "r", encoding="utf-8") as f:
             original_source = f.read()
 
-        return original_source, self.process_file_contents(original_source)
+        return original_source, self.process_file_contents(original_source, file_path)
 
-    def process_file_contents(self, original_source: str) -> str:
+    def process_file_contents(self, original_source: str, file_path: Path) -> str:
         module = cst.parse_module(original_source)
         wrapper = cst.MetadataWrapper(module)
 
         # First collect type hints
+        print(f"module_name: {file_path.name}")
+        self.collector.set_module_name(file_path)
         wrapper.visit(self.collector)
 
         # Then remove them
