@@ -105,6 +105,7 @@ class TypeHinter:
         original_source: str | None = None,
         modified_source: str | None = None,
         error_message: str | None = None,
+        function_node: FunctionNode | None = None,
     ) -> None:
         """Log information about a type hint attempt."""
         log_entry = {
@@ -113,6 +114,10 @@ class TypeHinter:
             "success": success,
             "repo_sha": self.repo.head.commit.hexsha,
         }
+
+        if function_node:
+            full_name = f"{function_node.class_name + '.' if function_node.class_name else ''}{function_node.name}"
+            log_entry["function_name"] = full_name
 
         if original_source:
             log_entry["original_source"] = original_source
@@ -141,6 +146,7 @@ class TypeHinter:
                 success=False,
                 error_message=error_msg,
                 original_source=function_source,
+                function_node=None,
             )
             return function_source
 
@@ -183,6 +189,7 @@ Keep all existing docstrings, comments, and whitespace exactly as they appear. O
                 success=False,
                 error_message=error_msg,
                 original_source=function_source,
+                function_node=function_node,
             )
             return function_source
 
@@ -193,6 +200,7 @@ Keep all existing docstrings, comments, and whitespace exactly as they appear. O
                 success=True,
                 modified_source=modified_source,
                 original_source=function_source,
+                function_node=function_node,
             )
             return modified_source
 
@@ -203,6 +211,7 @@ Keep all existing docstrings, comments, and whitespace exactly as they appear. O
             success=False,
             error_message=error_msg,
             original_source=function_source,
+            function_node=function_node,
         )
 
         return None
