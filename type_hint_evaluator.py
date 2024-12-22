@@ -72,6 +72,12 @@ class TypeHintEvaluator:
 
             # Step 3: Collect statistics and compare
             print("\nStep 3: Collecting and comparing type hints...")
+
+            # Compute original stats if not already done
+            if not original_stats:
+                print("\nCollecting original type hints without removal...")
+                original_stats = self._collect_hint_stats(project_path)
+
             added_stats = self._collect_hint_stats(added_hints_path)
             self._save_stats(
                 added_hints_path, "added_type_hints_report.txt", added_stats
