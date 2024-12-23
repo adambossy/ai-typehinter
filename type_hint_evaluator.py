@@ -46,12 +46,19 @@ class TypeHintEvaluator:
             )
 
             original_stats = {}
+            original_hints = {}
             if self.remove_type_hints:
                 print("\nStep 1: Removing and collecting original type hints...")
                 self._copy_project(project_path, removed_hints_path)
                 original_stats = self._remove_and_collect_hints(removed_hints_path)
+                original_hints = self._collect_detailed_hint_stats(project_path)
                 self._save_stats(
                     removed_hints_path, "original_type_hints_report.txt", original_stats
+                )
+                self._save_detailed_hints(
+                    removed_hints_path,
+                    "original_type_hints_details.txt",
+                    original_hints,
                 )
             else:
                 print("\nSkipping type hint removal step as requested.")
@@ -77,10 +84,18 @@ class TypeHintEvaluator:
             if not original_stats:
                 print("\nCollecting original type hints without removal...")
                 original_stats = self._collect_hint_stats(project_path)
+                original_hints = self._collect_detailed_hint_stats(project_path)
+                self._save_detailed_hints(
+                    project_path, "original_type_hints_details.txt", original_hints
+                )
 
             added_stats = self._collect_hint_stats(added_hints_path)
+            added_hints = self._collect_detailed_hint_stats(added_hints_path)
             self._save_stats(
                 added_hints_path, "added_type_hints_report.txt", added_stats
+            )
+            self._save_detailed_hints(
+                added_hints_path, "added_type_hints_details.txt", added_hints
             )
 
             # Compare results
@@ -293,6 +308,25 @@ class TypeHintEvaluator:
             if end_index != -1:
                 return source[end_index + 3 :]
         return source
+
+    def _save_detailed_hints(self, output_dir: Path, filename: str, hints: dict):
+        """Save detailed type hint information to a file."""
+        report_path = output_dir / filename
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write(f"Detailed Type Hint Report\n")
+            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("=" * 50 + "\n\n")
+
+            for category in ["functions", "parameters", "variables"]:
+                f.write(f"\n{category.title()} Type Hints:\n")
+                f.write("-" * 50 + "\n")
+
+                # Sort hints by fully qualified name
+                sorted_hints = sorted(hints[category].items(), key=lambda x: x[0])
+
+                for name, annotation in sorted_hints:
+                    annotation_str = self._get_annotation_string(annotation)
+                    f.write(f"{name}: {annotation_str}\n")
 
 
 @click.command()
