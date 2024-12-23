@@ -116,9 +116,7 @@ class TypeHinter:
         }
 
         if function_node:
-            full_name = f"{function_node.class_name + '.' if function_node.class_name else ''}{function_node.name}"
-            log_entry["function_name"] = full_name
-
+            log_entry["function_name"] = function_node.name
         if original_source:
             log_entry["original_source"] = original_source
         if success and modified_source:
@@ -155,16 +153,12 @@ class TypeHinter:
         if function_node.callers:
             context.append("Called by functions:")
             for caller in function_node.callers:
-                context.append(
-                    f"- {caller.class_name + '.' if caller.class_name else ''}{caller.name}"
-                )
+                context.append(f"- {caller.name}")
 
         if function_node.callees:
             context.append("\nCalls these functions:")
             for callee in function_node.callees:
-                context.append(
-                    f"- {callee.class_name + '.' if callee.class_name else ''}{callee.name}"
-                )
+                context.append(f"- {callee.name}")
 
         context_str = "\n".join(context)
 

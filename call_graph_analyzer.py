@@ -13,14 +13,12 @@ class FunctionNode:
         self,
         name: str,
         filename: str,
-        class_name: str = None,
         is_called_only: bool = False,
         lineno: int = None,
         end_lineno: int = None,
     ):
         self.name: str = name
         self.filename: str = filename
-        self.class_name: str = class_name
         self.callees: Set[FunctionNode] = set()  # Functions this function calls
         self.callers: Set[FunctionNode] = set()  # Functions that call this function
         self.lineno: int = lineno
@@ -34,8 +32,7 @@ class FunctionNode:
             ), "Called-only functions should not have line numbers"
 
     def __repr__(self) -> str:
-        class_prefix = f"{self.class_name}." if self.class_name else ""
-        return f"FunctionNode({class_prefix}{self.name})"
+        return f"FunctionNode({self.name})"
 
     def add_callee(self, callee: "FunctionNode"):
         """Add a function that this function calls."""
@@ -57,11 +54,7 @@ class CallGraphWalker:
         """
         self.analyzer = analyzer
         self.visited = set()
-        self.leaf_nodes = [
-            node
-            for node in analyzer.nodes.values()
-            if not node.callees and not node.is_called_only
-        ]
+        self.leaf_nodes = [node for node in analyzer.nodes.values() if not node.callees]
 
     def __iter__(self):
         """Return self as iterator."""
@@ -83,11 +76,13 @@ class CallGraphWalker:
             if current in self.visited:
                 continue
 
-            # Mark as visited and add its callers to the queue
-            self.visited.add(current)
             self.leaf_nodes.extend(current.callers)
 
-            return current
+            # is_called_only is short-hand for builtins. we don't want to type hint them but we do
+            # want their callers so we can work our way up the call tree
+            if not current.is_called_only:
+                self.visited.add(current)
+                return current
 
         raise StopIteration()
 
@@ -102,21 +97,31 @@ class CallGraphAnalyzer(ast.NodeVisitor):
         self.current_class: str = None
         self.current_file: str = None
         self.current_namespace = []
+        # Add a dictionary to track imports
+        self.imports = {}  # Maps local names to full module paths
+
+    def push_node(self, node_name: str):
+        self.current_namespace.append(node_name)
+
+    def pop_node(self):
+        self.current_namespace.pop()
+
+    def get_namespace(self) -> str:
+        return ".".join(self.current_namespace)
 
     def visit_Module(self, node: ast.Module) -> None:
-        self.current_namespace = [
-            os.path.splitext(os.path.basename(self.current_file))[0]
-        ]
+        module_name = os.path.splitext(os.path.basename(self.current_file))[0]
+        self.push_node(module_name)
         self.generic_visit(node)
-        self.current_namespace.pop()
+        self.pop_node()
 
     def visit_ClassDef(self, node: ast.ClassDef):
         """Track the current class being visited."""
         old_class = self.current_class
         self.current_class = node.name
-        self.current_namespace.append(node.name)
+        self.push_node(node.name)
         self.generic_visit(node)
-        self.current_namespace.pop()
+        self.pop_node()
         self.current_class = old_class
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
@@ -129,30 +134,22 @@ class CallGraphAnalyzer(ast.NodeVisitor):
         if self.is_test_function(node.name):
             return
 
-        self.current_namespace.append(node.name)
+        self.push_node(node.name)
         current_node = self._get_or_create_function_node(node)
         self._analyze_function_calls(node, current_node)
         self.generic_visit(node)
-        self.current_namespace.pop()
+        self.pop_node()
 
     def _get_or_create_function_node(self, node: ast.FunctionDef) -> FunctionNode:
         """Create or retrieve a FunctionNode for the given function definition."""
-        # Include module name in the node_name
-        # TODO (adam) Handle full namespace
-        module_name = self.current_namespace[0]
-        if self.current_class:
-            node_name = f"{module_name}.{self.current_class}.{node.name}"
-        else:
-            node_name = f"{module_name}.{node.name}"
-
+        node_name = self.get_namespace()
         current_node = self.nodes.get(node_name)
 
         if not current_node:
             # Get the position metadata for the node
             current_node = FunctionNode(
-                name=node.name,
+                name=node_name,
                 filename=self.current_file,
-                class_name=self.current_class,
                 lineno=node.lineno,
                 end_lineno=node.end_lineno,
                 is_called_only=False,
@@ -187,7 +184,6 @@ class CallGraphAnalyzer(ast.NodeVisitor):
             if isinstance(child, ast.Call):
                 called_name = self._resolve_call_name(child)
                 if called_name:
-                    # Pass the call node to get line numbers
                     called_node = self._get_or_create_called_node(called_name, child)
                     current_node.add_callee(called_node)
 
@@ -211,18 +207,27 @@ class CallGraphAnalyzer(ast.NodeVisitor):
             Input: AST node for 'ShoppingCart()'
             Output: 'test_module.ShoppingCart.__init__'
         """
+        # Check if the function is from an imported module
+        if func_node.id in self.imports:
+            return f"{self.imports[func_node.id]}"
+
         # Check if the function is a built-in function
         if func_node.id in dir(builtins):
             return f"builtins.{func_node.id}"
 
-        # TODO (adam) Handle full namespace
-        module_name = self.current_namespace[0]
-
-        if func_node.id in [n.class_name for n in self.nodes.values() if n.class_name]:
-            return f"{module_name}.{func_node.id}.__init__"
+        # Check for class instantiations. The node_name will be something like
+        # test_module.ShoppingCart.__init__, so we split out the ShoppingCart token
+        # and use that to check against
+        if func_node.id in [
+            node_name.split(".")[-2]
+            for node_name in self.nodes.keys()
+            if len(node_name.split(".")) > 1
+        ]:
+            class_name = func_node.id
+            return f"{self.get_namespace()}.{class_name}.__init__"
 
         # For regular function calls, include the module name
-        return f"{module_name}.{func_node.id}"
+        return f"{self.get_namespace()}.{func_node.id}"
 
     def _resolve_attribute_call(self, func_node: ast.Attribute) -> str:
         """Resolve a method call (e.g., object.method()).
@@ -234,29 +239,39 @@ class CallGraphAnalyzer(ast.NodeVisitor):
         if not isinstance(func_node.value, ast.Name):
             return None
 
-        # TODO (adam) Handle full namespace
-        module_name = self.current_namespace[0]
         instance_name = func_node.value.id
         method_name = func_node.attr
 
+        # Handle calls on imported modules
+        if instance_name in self.imports:
+            base_module = self.imports[instance_name]
+            return f"{base_module}.{method_name}"
+
+        # Handle self.method() calls within a class
         if instance_name == "self" and self.current_class:
-            return f"{module_name}.{self.current_class}.{method_name}"
+            namespace = ".".join(self.current_namespace[:-2])
+            return f"{namespace}.{self.current_class}.{method_name}"
 
         # Handle method calls on instances
-        if instance_name in [
-            n.name for n in self.nodes.values() if isinstance(n.name, str)
-        ]:
-            return f"{module_name}.{instance_name}.{method_name}"
+        if instance_name in self.nodes.keys():
+            namespace = ".".join(self.current_namespace[:-1])
+            return f"{namespace}.{method_name}"
 
         # Try to find the class name from the instance
         for node_name in self.nodes:
             if node_name.endswith(f".{instance_name}"):
-                class_name = node_name.split(".")[
-                    -2
-                ]  # Get the class name from the full path
-                return f"{module_name}.{class_name}.{method_name}"
+                class_name = node_name.split(".")[-2]
+                namespace = ".".join(self.current_namespace[:-1])
+                return f"{namespace}.{class_name}.{method_name}"
 
-        return f"{module_name}.{method_name}"
+        # FIXME (adam) There's a slight bug here, which is that in TestClassCallGraphAnalyzer,
+        # this returns cart.add_item as test_module.add_item, and this gets "repaired" in
+        # _get_or_create_called_node. The reason is that 'cart' can'y be resolved, and we
+        # should fix this to ensure this returns the right thing. Writing unit tests for this
+        # and _resolve_direct_call would help.
+
+        namespace = ".".join(self.current_namespace[:-1])
+        return f"{namespace}.{method_name}"
 
     def _get_or_create_called_node(
         self, called_name: str, call_node: ast.Call
@@ -270,27 +285,10 @@ class CallGraphAnalyzer(ast.NodeVisitor):
                     return self.nodes[existing_name]
 
             # Create new node if not found - mark it as called-only
-            # TODO (adam) Handle full namespace
-            module_name = self.current_namespace[0]
-            name_parts = called_name.split(".")
-
-            # Handle different name formats
-            # TODO (adam) Woof, this could be cleaner
-            if len(name_parts) == 3:  # module.class.method
-                class_name = name_parts[1]
-                func_name = name_parts[2]
-            elif len(name_parts) == 2:  # module.function or class.method
-                class_name = name_parts[0] if name_parts[0] != module_name else None
-                func_name = name_parts[1]
-            else:
-                class_name = None
-                func_name = called_name
-
             called_node = FunctionNode(
-                name=func_name,
+                name=called_name,
                 # Since we don't know the file yet, default to builtins until it gets overridden
                 filename="builtins",
-                class_name=class_name,
                 is_called_only=True,  # Mark as called-only
             )
             self.nodes[called_name] = called_node
@@ -357,8 +355,7 @@ class CallGraphAnalyzer(ast.NodeVisitor):
             print(f"\nFile: {file_path}")
             # Functions are already in order of appearance
             for node in self.files_to_functions[file_path]:
-                class_prefix = f"{node.class_name}." if node.class_name else ""
-                print(f"{class_prefix}{node.name}:")
+                print(f"{node.name}:")
                 print(
                     f"  Calls: {', '.join(str(n) for n in sorted(node.callees, key=lambda x: x.name)) or 'No direct calls'}"
                 )
@@ -374,6 +371,18 @@ class CallGraphAnalyzer(ast.NodeVisitor):
         """
         return CallGraphWalker(self)
 
+    def visit_Import(self, node):
+        """Handle simple imports like: import datetime"""
+        for alias in node.names:
+            self.imports[alias.asname or alias.name] = alias.name
+
+    def visit_ImportFrom(self, node):
+        """Handle from-imports like: from datetime import datetime, timedelta"""
+        module = node.module
+        for alias in node.names:
+            local_name = alias.asname or alias.name
+            self.imports[local_name] = f"{module}.{alias.name}"
+
 
 @click.command()
 @click.option(
@@ -388,8 +397,7 @@ def cli(project_path: str):
     print("\nUnreachable Functions:")
     unreachable = analyzer.find_unreachable_functions()
     for node in sorted(unreachable, key=lambda x: x.name):
-        class_prefix = f"{node.class_name}." if node.class_name else ""
-        print(f"- {class_prefix}{node.name} (defined in {node.filename})")
+        print(f"- {node.name} (defined in {node.filename})")
 
 
 if __name__ == "__main__":

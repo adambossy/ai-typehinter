@@ -68,14 +68,6 @@ def add_one(num):
         self.assertEqual(calc_square.filename, self.temp_file_name)
         self.assertEqual(add_one.filename, self.temp_file_name)
 
-    def test_class_attribution(self):
-        """Test that functions not in classes have None as their class_name."""
-        calc_square = self.analyzer.nodes["test_module.calculate_square"]
-        add_one = self.analyzer.nodes["test_module.add_one"]
-
-        self.assertIsNone(calc_square.class_name)
-        self.assertIsNone(add_one.class_name)
-
     def test_unreachable_functions(self):
         """Test identification of functions that are never called."""
         add_one = self.analyzer.nodes["test_module.add_one"]
@@ -130,27 +122,16 @@ def process_shopping_cart():
 
     def test_function_discovery(self):
         """Test that all functions (both module-level and class methods) are discovered."""
-        self.assertEqual(len(self.analyzer.nodes), 6)
-        self.assertIn("builtins.sum", self.analyzer.nodes)
-        self.assertIn("test_module.format_price", self.analyzer.nodes)
-        self.assertIn("test_module.process_shopping_cart", self.analyzer.nodes)
-        self.assertIn("test_module.ShoppingCart.__init__", self.analyzer.nodes)
-        self.assertIn("test_module.ShoppingCart.add_item", self.analyzer.nodes)
-        self.assertIn("test_module.ShoppingCart.calculate_total", self.analyzer.nodes)
-
-    def test_class_attribution(self):
-        """Test that class methods are correctly attributed to their class."""
-        add_item = self.analyzer.nodes["test_module.ShoppingCart.add_item"]
-        calc_total = self.analyzer.nodes["test_module.ShoppingCart.calculate_total"]
-        init_method = self.analyzer.nodes["test_module.ShoppingCart.__init__"]
-        format_price = self.analyzer.nodes["test_module.format_price"]
-        process_cart = self.analyzer.nodes["test_module.process_shopping_cart"]
-
-        self.assertEqual(add_item.class_name, "ShoppingCart")
-        self.assertEqual(calc_total.class_name, "ShoppingCart")
-        self.assertEqual(init_method.class_name, "ShoppingCart")
-        self.assertIsNone(format_price.class_name)
-        self.assertIsNone(process_cart.class_name)
+        expected_nodes = {
+            "builtins.sum",
+            "test_module.format_price",
+            "test_module.process_shopping_cart",
+            "test_module.ShoppingCart.__init__",
+            "test_module.ShoppingCart.add_item",
+            "test_module.ShoppingCart.calculate_total",
+        }
+        actual_nodes = set(self.analyzer.nodes.keys())
+        self.assertSetEqual(actual_nodes, expected_nodes)
 
     def test_process_cart_calls_add_item(self):
         """Test that process_shopping_cart calls ShoppingCart.add_item."""
@@ -179,10 +160,9 @@ def process_shopping_cart():
     def test_file_attribution(self):
         """Test that all functions are correctly attributed to the source file."""
         for node in self.analyzer.nodes.values():
-            if node.class_name == "builtins":
-                self.assertEqual(node.filename, "builtins")
-            else:
-                self.assertEqual(node.filename, self.temp_file_name)
+            self.assertTrue(
+                node.filename == "builtins" or node.filename == self.temp_file_name
+            )
 
     def test_unreachable_functions(self):
         """Test identification of functions that are never called."""
@@ -193,3 +173,185 @@ def process_shopping_cart():
         self.assertEqual(
             unreachable[0], process_cart
         )  # Only process_shopping_cart is unreachable
+
+
+class TestCallGraphWalker(TestCase):
+    def setUp(self):
+        """Set up test by creating a temporary file with library system code and analyzing it."""
+        self.library_code = """
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
+
+
+class Book:
+    def __init__(self, title: str, author: str, isbn: str) -> None:
+        self.title = title
+        self.author = author
+        self.isbn = isbn
+        self.checked_out = False
+        self.due_date = None
+
+    def __str__(self) -> str:
+        status = "Checked Out" if self.checked_out else "Available"
+        return f"{self.title} by {self.author} ({status})"
+
+
+class Library:
+    def __init__(self):
+        self.books = {}  # Intentionally untyped
+        self.members = []  # Intentionally untyped
+
+    def add_book(self, book: Book) -> None:
+        self.books[book.isbn] = book
+
+    def add_member(self, member_id, name):  # Intentionally untyped parameters
+        self.members.append({"id": member_id, "name": name})
+
+    def checkout_book(self, isbn: str) -> Optional[datetime]:
+        if isbn not in self.books:
+            return None
+
+        book = self.books[isbn]
+        if book.checked_out:
+            return None
+
+        book.checked_out = True
+        book.due_date = datetime.now() + timedelta(days=14)
+        return book.due_date
+
+    def return_book(self, isbn):  # Intentionally untyped parameter
+        if isbn in self.books:
+            book = self.books[isbn]
+            book.checked_out = False
+            book.due_date = None
+            return True
+        return False
+
+    def get_all_books(self) -> List[Book]:
+        return list(self.books.values())
+
+    def get_available_books(self):  # Intentionally untyped return
+        return [book for book in self.books.values() if not book.checked_out]
+
+
+def main():
+    # Example usage
+    library = Library()
+
+    # Add some books
+    books = [
+        Book("The Hobbit", "J.R.R. Tolkien", "978-0547928227"),
+        Book("Dune", "Frank Herbert", "978-0441172719"),
+        Book("Foundation", "Isaac Asimov", "978-0553293357"),
+    ]
+
+    for book in books:
+        library.add_book(book)
+
+    # Add some members
+    library.add_member("M001", "John Doe")
+    library.add_member("M002", "Jane Smith")
+
+    # Checkout and return books
+    print("All books:")
+    for book in library.get_all_books():
+        print(book)
+
+    print("\\nChecking out The Hobbit...")
+    due_date = library.checkout_book("978-0547928227")
+    if due_date:
+        print(f"Due date: {due_date}")
+
+    print("\\nAvailable books:")
+    for book in library.get_available_books():
+        print(book)
+
+
+if __name__ == "__main__":
+    main()
+"""
+        # Create a temporary directory
+        self.temp_dir = tempfile.mkdtemp()
+        self.temp_file_name = os.path.join(self.temp_dir, "library_system.py")
+
+        # Write the library code to the temporary file
+        with open(self.temp_file_name, "w") as f:
+            f.write(self.library_code)
+
+        # Initialize and run the analyzer
+        self.analyzer = CallGraphAnalyzer()
+        self.analyzer.analyze_file(self.temp_file_name)
+
+        # Create the walker
+        self.walker = self.analyzer.get_walker()
+
+    def tearDown(self):
+        """Clean up temporary files."""
+        os.unlink(self.temp_file_name)
+        os.rmdir(self.temp_dir)
+
+    def test_analyzer_nodes(self):
+        """Test that all expected nodes are present in the analyzer."""
+        expected_nodes = {
+            "library_system.Book.__init__",
+            "library_system.Book.__str__",
+            "library_system.Library.__init__",
+            "library_system.Library.add_book",
+            "library_system.Library.add_member",
+            "library_system.Library.checkout_book",
+            "library_system.Library.return_book",
+            "library_system.Library.get_all_books",
+            "library_system.Library.get_available_books",
+            "library_system.main",
+            "builtins.print",
+            "builtins.list",
+            "datetime.timedelta",
+            "datetime.datetime.now",
+        }
+
+        actual_nodes = set(self.analyzer.nodes.keys())
+        self.assertSetEqual(actual_nodes, expected_nodes)
+
+    def test_leaf_nodes(self):
+        """Test that leaf nodes (functions with no callees) are correctly identified."""
+        expected_leaf_functions = {
+            "library_system.Book.__init__",
+            "library_system.Book.__str__",
+            "library_system.Library.add_book",
+            "library_system.Library.add_member",
+            "library_system.Library.return_book",
+            "library_system.Library.__init__",
+            "library_system.Library.get_available_books",
+            "builtins.print",
+            "builtins.list",
+            "datetime.timedelta",
+            "datetime.datetime.now",
+        }
+
+        actual_leaf_nodes = {node.name for node in self.walker.leaf_nodes}
+        print(f"Actual leaf nodes: {actual_leaf_nodes}")
+
+        self.assertSetEqual(actual_leaf_nodes, expected_leaf_functions)
+
+    def test_walker_iteration(self):
+        """Test that walking through the call graph visits all nodes in bottom-up order."""
+        expected_nodes = {
+            "library_system.Book.__init__",
+            "library_system.Book.__str__",
+            "library_system.Library.__init__",
+            "library_system.Library.add_book",
+            "library_system.Library.add_member",
+            "library_system.Library.checkout_book",
+            "library_system.Library.return_book",
+            "library_system.Library.get_all_books",
+            "library_system.Library.get_available_books",
+            "library_system.main",
+        }
+
+        # Collect all nodes visited by the walker
+        visited_nodes = set()
+        for node in self.walker:
+            visited_nodes.add(node.name)
+
+        # Verify we visited all expected nodes
+        self.assertSetEqual(visited_nodes, expected_nodes)
